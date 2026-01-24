@@ -1,4 +1,4 @@
-# Media Downloader for Vicinae
+# Media Downloader [Vicinae extension]
 
 A yt-dlp based media downloader extension for Vicinae that allows downloading video/audio from various platforms with customizable settings per domain.
 
