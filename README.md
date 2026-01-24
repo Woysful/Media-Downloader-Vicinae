@@ -13,7 +13,7 @@ Basically a port of a plugin made for [Flow Launcher](https://github.com/woysful
 
 ## Installation
 
-Download [`bin-name`](https://github.com/Woysful/Media-Downloader-Vicinae/releases), extract and place `media-downloader` folder to extensions folder.
+Download [`media-downloader.tar.gz`](https://github.com/Woysful/Media-Downloader-Vicinae/releases/latest/download/media-downloader.tar.gz), extract and place `media-downloader` folder to extensions folder.
 
 Or you can build it yourself:
 
