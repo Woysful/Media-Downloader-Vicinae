@@ -2,6 +2,8 @@
 
 A yt-dlp based media downloader extension for Vicinae that allows downloading video/audio from various platforms with customizable settings per domain.
 
+![](https://github.com/user-attachments/assets/260c6e74-7897-4577-9c46-68c82630c23d)
+
 Basically a port of a plugin made for [Flow Launcher](https://github.com/woysful/media-downloader-FlowLauncher)
 
 *Heavily vibe coded, expect issues
