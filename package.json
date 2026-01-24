@@ -1,0 +1,184 @@
+{
+  "$schema": "https://raw.githubusercontent.com/vicinaehq/vicinae/refs/heads/main/extra/schemas/extension.json",
+  "name": "media-downloader",
+  "title": "Media Downloader",
+  "description": "yt-dlp based media downloader",
+  "version": "1.0.0",
+  "categories": ["Media"],
+  "license": "MIT",
+  "author": "woysful",
+  "contributors": [],
+  "pastContributors": [],
+  "icon": "icon.png",
+  "commands": [
+    {
+      "name": "video",
+      "title": "Video",
+      "subtitle": "Download video with customizable parameters",
+      "description": "Download video with yt-dlp parameters. Keys: -f format, -q quality, -yt yt-dlp params, -ff ffmpeg params",
+      "mode": "no-view",
+      "icon": "video.png",
+      "arguments": [
+        {
+          "name": "query",
+          "type": "text",
+          "placeholder": "Paste URL and optional keys: -q 1080 -f mp4 -yt bv+ba/best -ff '-c:v copy -c:a aac'",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "audio",
+      "title": "Audio",
+      "subtitle": "Download audio with customizable parameters",
+      "description": "Download audio with format and ffmpeg options. Keys: -f format, -ff ffmpeg params",
+      "mode": "no-view",
+      "icon": "audio.png",
+      "arguments": [
+        {
+          "name": "query",
+          "type": "text",
+          "placeholder": "Paste URL and optional keys: -f mp3 -ff '-c:a libmp3lame'",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "video-best",
+      "title": "Video Best",
+      "subtitle": "Download video in best quality",
+      "description": "Download video in best possible quality without re-encoding",
+      "mode": "no-view",
+      "icon": "video_best.png",
+      "arguments": [
+        {
+          "name": "url",
+          "type": "text",
+          "placeholder": "Paste URL to download video in best possible quality without re-encoding",
+          "required": true
+      }
+      ]
+    },
+    {
+      "name": "audio-best",
+      "title": "Audio Best",
+      "subtitle": "Download audio in best quality and convert to WAV",
+      "description": "Download audio in best quality and convert to WAV format",
+      "mode": "no-view",
+      "icon": "audio_best.png",
+      "arguments": [
+        {
+          "name": "url",
+          "type": "text",
+          "placeholder": "Enter audio URL to download in best quality as WAV",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "cancel",
+      "title": "Cancel Download",
+      "subtitle": "Force stop all downloads immediately",
+      "description": "Immediately terminate all running download and processing operations",
+      "mode": "no-view",
+      "icon": "Warning.png"
+    },
+    {
+      "name": "configure-domains",
+      "title": "Configure Domains",
+      "subtitle": "Edit domain configuration file",
+      "description": "Open the domain configuration file for editing custom download settings",
+      "mode": "no-view",
+      "icon": "Config.png"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "downloadDirectory",
+      "title": "Download Directory",
+      "description": "Directory where media files will be saved (leave empty to use Downloads folder)",
+      "type": "directory",
+      "required": false
+    },
+    {
+      "name": "defaultVideoFormat",
+      "title": "Default Video Format",
+      "description": "Default video container format",
+      "type": "dropdown",
+      "default": "mkv",
+      "required": false,
+      "data": [
+        {
+          "title": "MKV",
+          "value": "mkv"
+        },
+        {
+          "title": "MP4",
+          "value": "mp4"
+        },
+        {
+          "title": "AVI",
+          "value": "avi"
+        },
+        {
+          "title": "MOV",
+          "value": "mov"
+        },
+        {
+          "title": "FLV",
+          "value": "flv"
+        }
+      ]
+    },
+    {
+      "name": "defaultAudioFormat",
+      "title": "Default Audio Format",
+      "description": "Default audio format",
+      "type": "dropdown",
+      "default": "m4a",
+      "required": false,
+      "data": [
+        {
+          "title": "M4A",
+          "value": "m4a"
+        },
+        {
+          "title": "MP3",
+          "value": "mp3"
+        },
+        {
+          "title": "WAV",
+          "value": "wav"
+        },
+        {
+          "title": "FLAC",
+          "value": "flac"
+        },
+        {
+          "title": "OGG",
+          "value": "ogg"
+        }
+      ]
+    },
+    {
+      "name": "customDomainConfig",
+      "title": "Custom Domain Configuration",
+      "description": "Directory containing domain-config.txt file. Leave empty to use default location (~/.config/media-downloader/). Use 'Configure Domains' command to edit.",
+      "type": "directory",
+      "required": false
+    }
+  ],
+  "scripts": {
+    "build": "vici build",
+    "dev": "vici develop",
+    "format": "biome format --write src",
+    "lint": "vici lint"
+  },
+  "dependencies": {
+    "@vicinae/api": "^0.18.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "@biomejs/biome": "2.3.2"
+  }
+}

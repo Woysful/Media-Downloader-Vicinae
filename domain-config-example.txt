@@ -1,0 +1,23 @@
+# Example domain configuration file
+# Place this file as domain-config.txt in the directory selected in Vicinae preferences
+# Format: domain: yt-dlp="parameters" format="extension" ffmpeg="arguments"
+# One domain per line, parameters are optional
+# You can specify multiple domains separated by comma to use the same settings
+
+# YouTube - high quality with fallback codecs (supports both youtube.com and youtu.be)
+youtube.com, youtu.be: yt-dlp="(bv[vcodec^=av01]/bv[ext=webm]/bv[vcodec^=avc1])+(ba[ext=m4a]/ba)" format="mkv"
+
+# Instagram - copy streams without re-encoding
+instagram: ffmpeg="-c:v copy -c:a aac"
+
+# Twitter/X - MP4 format (supports both twitter.com and x.com)
+twitter.com, x.com: format="mp4"
+
+# Vimeo - best quality
+vimeo: yt-dlp="bestvideo+bestaudio/best"
+
+# TikTok - MP4 with AAC
+tiktok: format="mp4" ffmpeg="-c:v copy -c:a aac"
+
+# Custom site - your own parameters
+# mysite: yt-dlp="best" format="mp4" ffmpeg="-c:v libx264 -c:a aac"
