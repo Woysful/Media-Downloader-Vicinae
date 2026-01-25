@@ -49,11 +49,11 @@ The extension will be built to `~/.local/share/vicinae/extensions/media-download
 |`-f`  | video/audio format                       | -f mp4                      |
 |`-q`  | video quality ( based on height )        | -q 1080                     |
 |`-yt` | yt-dlp parameters                        | -yt bv+ba/best              |
-|`-ff` | ffmpeg postprocessor arguments           | -ff "-c:v libx265 -c:a aac" |
+|`-ff` | ffmpeg postprocessor arguments           | -ff '-c:v libx265 -c:a aac' |
 
 **Example:**
 
-`https://youtube.com/video -f mp4 -q 1080 -yt bv+ba/best -ff "-c:v libx265"`
+`https://youtube.com/video -f mp4 -q 1080 -yt bv+ba/best -ff '-c:v libx265'`
 
 ### Settings
 
