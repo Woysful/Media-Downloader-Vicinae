@@ -4,9 +4,9 @@ A yt-dlp based media downloader extension for Vicinae that allows downloading vi
 
 ![](https://github.com/user-attachments/assets/260c6e74-7897-4577-9c46-68c82630c23d)
 
-Basically a port of a plugin made for [Flow Launcher](https://github.com/woysful/media-downloader-FlowLauncher)
-
-*Heavily vibe coded, expect issues
+> Basically a port of a plugin made for [Flow Launcher](https://github.com/woysful/media-downloader-FlowLauncher)
+> 
+> *Also heavily vibe coded, expect issues
 
 ## Features
 
@@ -26,7 +26,7 @@ npm install
 npm run build
 ```
 
-The extension will be built to `~/.local/share/vicinae/extensions/media-downloader/`
+> The extension will be built to `~/.local/share/vicinae/extensions/media-downloader/`
 
 ## Usage
 
@@ -51,27 +51,27 @@ The extension will be built to `~/.local/share/vicinae/extensions/media-download
 |`-yt` | yt-dlp parameters                        | -yt bv+ba/best              |
 |`-ff` | ffmpeg postprocessor arguments           | -ff '-c:v libx265 -c:a aac' |
 
-**Example:**
-
-`https://youtube.com/video -f mp4 -q 1080 -yt bv+ba/best -ff '-c:v libx265'`
+> **Example:**
+> 
+> ```https://youtube.com/video -f mp4 -q 1080 -yt bv+ba/best -ff '-c:v libx265'```
 
 ### Settings
 
 Configure the extension through Vicinae's preferences:
 
-1. **Download Directory** (Default is `~/Downloads`)
-2. **Default Video/Audio Format**
-3. **Custom Domain Configuration**: Directory containing `domain-config.txt`
+- **Download Directory** (Default is `~/Downloads`)
+- **Default Video/Audio Format**
+- **Custom Domain Configuration**: Directory containing `domain-config.txt`
 
 ### Domain Configuration
 
-**Priority order:** Domain config file → Vicinae preferences → Built-in defaults
+**Priority order:** User input → Domain config file → Vicinae preferences → Built-in defaults
 
 **Setup:**
 1. Open Vicinae settings for this extension
 2. Set **Custom Domain Configuration** to a directory
     
-    or leave empty for `~/.config/media-downloader/`
+    or leave empty. Default is  `~/.config/media-downloader/`
 
 3. Run **"Configure Domains"** command to create/edit the config file
 
