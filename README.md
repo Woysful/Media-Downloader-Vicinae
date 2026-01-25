@@ -81,7 +81,7 @@ Configure the extension through Vicinae's preferences:
 domain1, domain2, ... : yt-dlp="parameters" format="extension" ffmpeg="arguments"
 
 # Examples:
-youtube.com, youtu.be: yt-dlp="(bv[vcodec^=av01]/bv[vcodec^=avc1])+(ba[ext=m4a]/ba)" format="mp4"
+youtube.com, youtu.be: yt-dlp="(bv[vcodec^=av01]/bv)+(ba[ext=m4a]/ba)" format="mp4"
 
 instagram.com: ffmpeg="-c:v copy -c:a aac"
 
