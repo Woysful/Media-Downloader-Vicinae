@@ -756,6 +756,14 @@ async function runCommandWithProgress(command: string, args: string[]): Promise<
 					title: "✅ Download completed!",
 					message: ""
 				});
+
+				// Open file manager in download directory if preference is enabled
+				const preferences = getPreferenceValues<Preferences>();
+				if (preferences.openFileManagerAfterDownload) {
+					const downloadDir = preferences.downloadDirectory || path.join(os.homedir(), 'Downloads');
+					open(downloadDir);
+				}
+
 				resolve({ success: true, output: stdout });
 			} else {
 				let errorMessage = stderr || stdout;

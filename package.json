@@ -3,7 +3,7 @@
   "name": "media-downloader",
   "title": "Media Downloader",
   "description": "yt-dlp based media downloader",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "categories": ["Media"],
   "license": "MIT",
   "author": "woysful",
@@ -166,6 +166,15 @@
       "description": "Directory containing domain-config.txt file. Leave empty to use default location (~/.config/media-downloader/). Use 'Configure Domains' command to edit.",
       "type": "directory",
       "required": false
+    },
+    {
+      "name": "openFileManagerAfterDownload",
+      "title": "Open file manager after download",
+      "description": "Automatically open the download directory in the file manager after a successful download",
+      "type": "checkbox",
+      "default": false,
+      "required": false,
+      "label": "Open file manager after download"
     }
   ],
   "scripts": {

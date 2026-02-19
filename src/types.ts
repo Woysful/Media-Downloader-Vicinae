@@ -13,6 +13,7 @@ export interface Preferences {
 	defaultVideoFormat: string;
 	defaultAudioFormat: string;
 	customDomainConfig?: string;
+	openFileManagerAfterDownload: boolean;
 }
 
 // Parsed domain settings
