@@ -1,8 +1,11 @@
-import { handleDownload } from "./video";
-import { CommandArguments } from "./types";
+import type { LaunchProps } from "@vicinae/api";
+import { runQuickDownload } from "./lib/download";
 
-// Video Best command - accepts only URL
-export default async function videoBest(args: CommandArguments): Promise<void> {
-	const url = args.arguments.url || "";
-	await handleDownload("video_best", url);
+export default async function VideoBest(
+	props: LaunchProps<{ arguments: { url: string } }>,
+) {
+	await runQuickDownload("video-best", props.arguments.url, [
+		"playlist",
+		"args",
+	]);
 }

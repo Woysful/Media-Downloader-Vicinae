@@ -1,8 +1,14 @@
-import { handleDownload } from "./video";
-import { CommandArguments } from "./types";
+import type { LaunchProps } from "@vicinae/api";
+import { runQuickDownload } from "./lib/download";
 
-// Audio command - accepts URL with optional parameters
-export default async function audio(args: CommandArguments): Promise<void> {
-	const query = args.arguments.query || "";
-	await handleDownload("audio", query);
+export default async function Audio(
+	props: LaunchProps<{ arguments: { query: string } }>,
+) {
+	await runQuickDownload("audio", props.arguments.query, [
+		"container",
+		"selector",
+		"ffmpeg",
+		"args",
+		"playlist",
+	]);
 }

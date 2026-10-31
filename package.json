@@ -2,27 +2,38 @@
   "$schema": "https://raw.githubusercontent.com/vicinaehq/vicinae/refs/heads/main/extra/schemas/extension.json",
   "name": "media-downloader",
   "title": "Media Downloader",
-  "description": "yt-dlp based media downloader",
-  "version": "1.1.0",
-  "categories": ["Media"],
+  "description": "Download video and audio from YouTube and hundreds of other sites with yt-dlp, with per-site settings",
+  "version": "2.0.0",
+  "categories": [
+    "Media"
+  ],
   "license": "MIT",
   "author": "woysful",
   "contributors": [],
   "pastContributors": [],
   "icon": "icon.png",
+  "platforms": [
+    "Linux",
+    "macOS"
+  ],
   "commands": [
     {
       "name": "video",
       "title": "Video",
-      "subtitle": "Download video with customizable parameters",
-      "description": "Download video with yt-dlp parameters. Keys: -f format, -q quality, -yt yt-dlp params, -ff ffmpeg params",
+      "subtitle": "Media Downloader",
+      "description": "Download a video. Keys: -f container, -q max height, -yt yt-dlp format selector, -ff ffmpeg args, -a extra yt-dlp args, -p whole playlist, -e re-encode for video editors",
       "mode": "no-view",
       "icon": "video.png",
+      "keywords": [
+        "yt-dlp",
+        "youtube",
+        "download"
+      ],
       "arguments": [
         {
           "name": "query",
           "type": "text",
-          "placeholder": "Paste URL and optional keys: -q 1080 -f mp4 -yt bv+ba/best -ff '-c:v copy -c:a aac'",
+          "placeholder": "URL [-q 1080] [-f mp4] [-p] [-e]",
           "required": true
         }
       ]
@@ -30,15 +41,21 @@
     {
       "name": "audio",
       "title": "Audio",
-      "subtitle": "Download audio with customizable parameters",
-      "description": "Download audio with format and ffmpeg options. Keys: -f format, -ff ffmpeg params",
+      "subtitle": "Media Downloader",
+      "description": "Download audio only. Keys: -f audio format, -yt yt-dlp format selector, -ff ffmpeg args, -a extra yt-dlp args, -p whole playlist",
       "mode": "no-view",
       "icon": "audio.png",
+      "keywords": [
+        "yt-dlp",
+        "music",
+        "mp3",
+        "download"
+      ],
       "arguments": [
         {
           "name": "query",
           "type": "text",
-          "placeholder": "Paste URL and optional keys: -f mp3 -ff '-c:a libmp3lame'",
+          "placeholder": "URL [-f mp3] [-p]",
           "required": true
         }
       ]
@@ -46,48 +63,71 @@
     {
       "name": "video-best",
       "title": "Video Best",
-      "subtitle": "Download video in best quality",
-      "description": "Download video in best possible quality without re-encoding",
+      "subtitle": "Media Downloader",
+      "description": "Download a video in the best available quality without remuxing or re-encoding. Keys: -p whole playlist, -a extra yt-dlp args",
       "mode": "no-view",
       "icon": "video_best.png",
+      "keywords": [
+        "yt-dlp",
+        "download"
+      ],
       "arguments": [
         {
           "name": "url",
           "type": "text",
-          "placeholder": "Paste URL to download video in best possible quality without re-encoding",
-          "required": true
-      }
-      ]
-    },
-    {
-      "name": "audio-best",
-      "title": "Audio Best",
-      "subtitle": "Download audio in best quality and convert to WAV",
-      "description": "Download audio in best quality and convert to WAV format",
-      "mode": "no-view",
-      "icon": "audio_best.png",
-      "arguments": [
-        {
-          "name": "url",
-          "type": "text",
-          "placeholder": "Enter audio URL to download in best quality as WAV",
+          "placeholder": "URL [-p]",
           "required": true
         }
       ]
     },
     {
+      "name": "audio-best",
+      "title": "Audio Best",
+      "subtitle": "Media Downloader",
+      "description": "Download audio in the best available quality and convert it to WAV. Keys: -p whole playlist, -a extra yt-dlp args",
+      "mode": "no-view",
+      "icon": "audio_best.png",
+      "keywords": [
+        "yt-dlp",
+        "wav",
+        "download"
+      ],
+      "arguments": [
+        {
+          "name": "url",
+          "type": "text",
+          "placeholder": "URL [-p]",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "download",
+      "title": "New Download",
+      "subtitle": "Media Downloader",
+      "description": "Download form with all options: type, quality, container, editing compatibility, playlist and custom yt-dlp/ffmpeg arguments",
+      "mode": "view",
+      "icon": "ytdlp.png",
+      "keywords": [
+        "yt-dlp",
+        "youtube",
+        "download",
+        "form"
+      ]
+    },
+    {
       "name": "cancel",
       "title": "Cancel Download",
-      "subtitle": "Force stop all downloads immediately",
-      "description": "Immediately terminate all running download and processing operations",
+      "subtitle": "Media Downloader",
+      "description": "Stop all downloads started by Media Downloader and remove their partial files",
       "mode": "no-view",
       "icon": "Warning.png"
     },
     {
       "name": "configure-domains",
       "title": "Configure Domains",
-      "subtitle": "Edit domain configuration file",
-      "description": "Open the domain configuration file for editing custom download settings",
+      "subtitle": "Media Downloader",
+      "description": "Open the per-domain settings file (domain-config.txt), creating it with documentation if needed",
       "mode": "no-view",
       "icon": "Config.png"
     }
@@ -96,33 +136,37 @@
     {
       "name": "downloadDirectory",
       "title": "Download Directory",
-      "description": "Directory where media files will be saved (leave empty to use Downloads folder)",
+      "description": "Where files are saved. Empty means your XDG download folder (usually ~/Downloads)",
       "type": "directory",
       "required": false
     },
     {
       "name": "defaultVideoFormat",
-      "title": "Default Video Format",
-      "description": "Default video container format",
+      "title": "Video Container",
+      "description": "Container for the Video command. MP4 is the safest choice for video editors",
       "type": "dropdown",
-      "default": "mkv",
       "required": false,
+      "default": "mp4",
       "data": [
-        {
-          "title": "MKV",
-          "value": "mkv"
-        },
         {
           "title": "MP4",
           "value": "mp4"
         },
         {
-          "title": "AVI",
-          "value": "avi"
+          "title": "MKV",
+          "value": "mkv"
+        },
+        {
+          "title": "WebM",
+          "value": "webm"
         },
         {
           "title": "MOV",
           "value": "mov"
+        },
+        {
+          "title": "AVI",
+          "value": "avi"
         },
         {
           "title": "FLV",
@@ -131,15 +175,91 @@
       ]
     },
     {
-      "name": "defaultAudioFormat",
-      "title": "Default Audio Format",
-      "description": "Default audio format",
+      "name": "defaultQuality",
+      "title": "Video Quality",
+      "description": "Preferred maximum resolution. A lower resolution is used only when the video has nothing at or below it",
       "type": "dropdown",
-      "default": "m4a",
       "required": false,
+      "default": "best",
       "data": [
         {
-          "title": "M4A",
+          "title": "Best available",
+          "value": "best"
+        },
+        {
+          "title": "Up to 2160p (4K)",
+          "value": "2160"
+        },
+        {
+          "title": "Up to 1440p",
+          "value": "1440"
+        },
+        {
+          "title": "Up to 1080p",
+          "value": "1080"
+        },
+        {
+          "title": "Up to 720p",
+          "value": "720"
+        },
+        {
+          "title": "Up to 480p",
+          "value": "480"
+        },
+        {
+          "title": "Up to 360p",
+          "value": "360"
+        }
+      ]
+    },
+    {
+      "name": "editingCompatibility",
+      "title": "Editing Compatibility",
+      "description": "How to avoid dropped or glitched frames in video editors. Prefer picks H.264/AAC streams when available; re-encode always produces H.264/AAC MP4 with a constant frame rate (slow)",
+      "type": "dropdown",
+      "required": false,
+      "default": "prefer",
+      "data": [
+        {
+          "title": "Prefer H.264/AAC (no re-encode)",
+          "value": "prefer"
+        },
+        {
+          "title": "Keep original streams",
+          "value": "original"
+        },
+        {
+          "title": "Always re-encode (constant frame rate)",
+          "value": "reencode"
+        }
+      ]
+    },
+    {
+      "name": "reencodeArguments",
+      "title": "Re-encode Arguments",
+      "description": "ffmpeg output arguments used by the re-encode mode (-e). Frame rate is fixed automatically",
+      "type": "textfield",
+      "required": false,
+      "default": "-c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart"
+    },
+    {
+      "name": "defaultVideoSelector",
+      "title": "yt-dlp Video Format",
+      "description": "Default yt-dlp format selector (-f) for the Video command",
+      "type": "textfield",
+      "required": false,
+      "default": "bv*+ba/b"
+    },
+    {
+      "name": "defaultAudioFormat",
+      "title": "Audio Format",
+      "description": "Format for the Audio command",
+      "type": "dropdown",
+      "required": false,
+      "default": "m4a",
+      "data": [
+        {
+          "title": "M4A (AAC)",
           "value": "m4a"
         },
         {
@@ -147,47 +267,205 @@
           "value": "mp3"
         },
         {
-          "title": "WAV",
-          "value": "wav"
+          "title": "Opus",
+          "value": "opus"
+        },
+        {
+          "title": "OGG (Vorbis)",
+          "value": "ogg"
         },
         {
           "title": "FLAC",
           "value": "flac"
         },
         {
-          "title": "OGG",
-          "value": "ogg"
+          "title": "WAV",
+          "value": "wav"
         }
       ]
     },
     {
+      "name": "audioQuality",
+      "title": "Audio Quality",
+      "description": "Quality for lossy audio formats",
+      "type": "dropdown",
+      "required": false,
+      "default": "0",
+      "data": [
+        {
+          "title": "Best (VBR 0)",
+          "value": "0"
+        },
+        {
+          "title": "320 kbps",
+          "value": "320K"
+        },
+        {
+          "title": "256 kbps",
+          "value": "256K"
+        },
+        {
+          "title": "192 kbps",
+          "value": "192K"
+        },
+        {
+          "title": "128 kbps",
+          "value": "128K"
+        }
+      ]
+    },
+    {
+      "name": "embedMetadata",
+      "title": "Embedding",
+      "label": "Embed metadata (title, artist, date)",
+      "description": "Write title, uploader, date and description into the file",
+      "type": "checkbox",
+      "required": false,
+      "default": true
+    },
+    {
+      "name": "embedThumbnail",
+      "title": "",
+      "label": "Embed thumbnail",
+      "description": "Embed the video thumbnail as cover art (MP4, MKV, MOV, M4A, MP3, Opus, FLAC)",
+      "type": "checkbox",
+      "required": false,
+      "default": false
+    },
+    {
+      "name": "cookiesFromBrowser",
+      "title": "Cookies From Browser",
+      "description": "Use the login cookies of a browser for age-restricted, private or members-only videos",
+      "type": "dropdown",
+      "required": false,
+      "default": "none",
+      "data": [
+        {
+          "title": "Don't use cookies",
+          "value": "none"
+        },
+        {
+          "title": "Firefox",
+          "value": "firefox"
+        },
+        {
+          "title": "Chrome",
+          "value": "chrome"
+        },
+        {
+          "title": "Chromium",
+          "value": "chromium"
+        },
+        {
+          "title": "Brave",
+          "value": "brave"
+        },
+        {
+          "title": "Edge",
+          "value": "edge"
+        },
+        {
+          "title": "Opera",
+          "value": "opera"
+        },
+        {
+          "title": "Vivaldi",
+          "value": "vivaldi"
+        },
+        {
+          "title": "Safari",
+          "value": "safari"
+        }
+      ]
+    },
+    {
+      "name": "extraArguments",
+      "title": "Extra yt-dlp Arguments",
+      "description": "Arguments added to every download, e.g. --limit-rate 5M or --sponsorblock-remove sponsor",
+      "type": "textfield",
+      "required": false,
+      "placeholder": "--limit-rate 5M"
+    },
+    {
+      "name": "outputTemplate",
+      "title": "File Name Template",
+      "description": "yt-dlp output template for single downloads",
+      "type": "textfield",
+      "required": false,
+      "default": "%(title)s.%(ext)s"
+    },
+    {
+      "name": "playlistTemplate",
+      "title": "Playlist File Name Template",
+      "description": "yt-dlp output template used with -p",
+      "type": "textfield",
+      "required": false,
+      "default": "%(playlist_title,playlist_id|Playlist)s/%(playlist_index&{:03d} - |)s%(title)s.%(ext)s"
+    },
+    {
       "name": "customDomainConfig",
-      "title": "Custom Domain Configuration",
-      "description": "Directory containing domain-config.txt file. Leave empty to use default location (~/.config/media-downloader/). Use 'Configure Domains' command to edit.",
+      "title": "Domain Config Directory",
+      "description": "Directory containing domain-config.txt. Empty means ~/.config/media-downloader. Use the Configure Domains command to edit it",
       "type": "directory",
       "required": false
     },
     {
-      "name": "openFileManagerAfterDownload",
-      "title": "Open file manager after download",
-      "description": "Automatically open the download directory in the file manager after a successful download",
+      "name": "ytdlpPath",
+      "title": "yt-dlp Executable",
+      "description": "Custom yt-dlp binary. Empty means the one on PATH, or a copy downloaded automatically",
+      "type": "file",
+      "required": false
+    },
+    {
+      "name": "ffmpegPath",
+      "title": "ffmpeg Executable",
+      "description": "Custom ffmpeg binary. Empty means the one on PATH",
+      "type": "file",
+      "required": false
+    },
+    {
+      "name": "autoUpdateYtdlp",
+      "title": "Maintenance",
+      "label": "Update the downloaded yt-dlp daily",
+      "description": "Runs yt-dlp -U at most once a day. Only affects the copy downloaded by this extension, not a system installation",
       "type": "checkbox",
-      "default": false,
       "required": false,
-      "label": "Open file manager after download"
+      "default": true
+    },
+    {
+      "name": "notifyOnCompletion",
+      "title": "After Download",
+      "label": "Desktop notification",
+      "description": "Send a desktop notification when a download finishes or fails",
+      "type": "checkbox",
+      "required": false,
+      "default": true
+    },
+    {
+      "name": "openFileManagerAfterDownload",
+      "title": "",
+      "label": "Show the file in the file manager",
+      "description": "Reveal the downloaded file in the file manager after a successful download",
+      "type": "checkbox",
+      "required": false,
+      "default": false
     }
   ],
   "scripts": {
     "build": "vici build",
     "dev": "vici develop",
-    "format": "biome format --write src",
-    "lint": "vici lint"
+    "format": "biome format --write src test",
+    "lint": "vici lint",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "@vicinae/api": "^0.18.0"
+    "@vicinae/api": "^0.29.2"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.3.2",
     "typescript": "^5.9.2",
-    "@biomejs/biome": "2.3.2"
+    "tsx": "^4.20.0",
+    "@types/node": "^22.0.0"
   }
 }
