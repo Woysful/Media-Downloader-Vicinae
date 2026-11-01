@@ -1,27 +1,27 @@
 import {
 	type AudioFormat,
 	asAudioFormat,
-	asCompatMode,
 	asVideoContainer,
 	COOKIE_BROWSERS,
-	type CompatMode,
 	DEFAULT_OUTPUT_TEMPLATE,
 	DEFAULT_PLAYLIST_TEMPLATE,
-	DEFAULT_REENCODE_ARGS,
 	DEFAULT_VIDEO_SELECTOR,
 	parseQuality,
 	type Quality,
 	type VideoContainer,
 } from "./constants";
 import { defaultDownloadDir, normalizeUserPath } from "./paths";
+import { asReencodeCodec, type ReencodeCodec } from "./reencode";
 
 export interface Settings {
 	downloadDir: string;
 	videoContainer: VideoContainer;
 	videoSelector: string;
 	quality: Quality;
-	compat: CompatMode;
-	reencodeArgs: string;
+	/** Re-encode every video download (otherwise only with -e or a domain rule). */
+	reencodeAlways: boolean;
+	reencodeCodec: ReencodeCodec;
+	reencodeExtraArgs: string;
 	audioFormat: AudioFormat;
 	audioQuality: string;
 	embedMetadata: boolean;
@@ -36,6 +36,7 @@ export interface Settings {
 	autoUpdateYtdlp: boolean;
 	notify: boolean;
 	openFolder: boolean;
+	progressNotification: boolean;
 }
 
 function text(value: unknown): string | undefined {
@@ -61,8 +62,9 @@ export function normalizeSettings(raw: Record<string, unknown>): Settings {
 		videoContainer: asVideoContainer(text(raw.defaultVideoFormat)) ?? "mp4",
 		videoSelector: text(raw.defaultVideoSelector) ?? DEFAULT_VIDEO_SELECTOR,
 		quality: parseQuality(text(raw.defaultQuality)) ?? "best",
-		compat: asCompatMode(text(raw.editingCompatibility)) ?? "prefer",
-		reencodeArgs: text(raw.reencodeArguments) ?? DEFAULT_REENCODE_ARGS,
+		reencodeAlways: flag(raw.reencodeAlways, false),
+		reencodeCodec: asReencodeCodec(text(raw.reencodeCodec)) ?? "h264",
+		reencodeExtraArgs: text(raw.reencodeExtraArguments) ?? "",
 		audioFormat: asAudioFormat(text(raw.defaultAudioFormat)) ?? "m4a",
 		audioQuality: /^(\d|10|\d+[kK])$/.test(audioQuality) ? audioQuality : "0",
 		embedMetadata: flag(raw.embedMetadata, true),
@@ -81,5 +83,6 @@ export function normalizeSettings(raw: Record<string, unknown>): Settings {
 		autoUpdateYtdlp: flag(raw.autoUpdateYtdlp, true),
 		notify: flag(raw.notifyOnCompletion, true),
 		openFolder: flag(raw.openFileManagerAfterDownload, false),
+		progressNotification: flag(raw.progressNotification, true),
 	};
 }

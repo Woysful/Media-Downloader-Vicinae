@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import {
 	Action,
 	ActionPanel,
@@ -10,12 +11,9 @@ import {
 	showToast,
 	Toast,
 } from "@vicinae/api";
-import * as path from "node:path";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	AUDIO_FORMATS,
-	asCompatMode,
-	type CompatMode,
 	parseQuality,
 	type Quality,
 	VIDEO_CONTAINERS,
@@ -33,6 +31,12 @@ import {
 import { cancelJob } from "./lib/jobs";
 import { buildPlan, type DownloadKind, type DownloadRequest } from "./lib/plan";
 import { normalizeUrl } from "./lib/query";
+import {
+	asReencodeCodec,
+	CODEC_PRESETS,
+	REENCODE_CODECS,
+	type ReencodeCodec,
+} from "./lib/reencode";
 import { splitShellWords } from "./lib/shell-words";
 import { describeProgress, isSuccess, type JobState } from "./lib/status";
 
@@ -57,11 +61,32 @@ const KIND_ITEMS: { value: DownloadKind; title: string; icon: Icon }[] = [
 
 const QUALITIES = ["best", "2160", "1440", "1080", "720", "480", "360"];
 
-const COMPAT_TITLES: Record<CompatMode, string> = {
-	original: "Keep original streams",
-	prefer: "Prefer H.264/AAC (no re-encode)",
-	reencode: "Re-encode to H.264/AAC, constant frame rate",
-};
+const OFF = "off";
+
+const CODEC_GROUPS: { title: string; codecs: ReencodeCodec[] }[] = [
+	{
+		title: "CPU",
+		codecs: REENCODE_CODECS.filter((c) => !CODEC_PRESETS[c].hardware),
+	},
+	{
+		title: "NVIDIA",
+		codecs: REENCODE_CODECS.filter(
+			(c) => CODEC_PRESETS[c].hardware === "nvenc",
+		),
+	},
+	{
+		title: "AMD / Intel",
+		codecs: REENCODE_CODECS.filter(
+			(c) => CODEC_PRESETS[c].hardware === "vaapi",
+		),
+	},
+];
+
+function reencodeLabel(value: ReencodeCodec | false): string {
+	return value === false
+		? "Off (keep original streams)"
+		: CODEC_PRESETS[value].title;
+}
 
 function qualityLabel(quality: Quality): string {
 	return quality === "best" ? "Best available" : `Up to ${quality}p`;
@@ -71,7 +96,7 @@ function looksLikeUrl(text: string): boolean {
 	return /^https?:\/\/\S+$/i.test(text.trim());
 }
 
-export default function NewDownload() {
+export default function DownloadMedia() {
 	const settings = useMemo(loadSettings, []);
 	const config = useMemo(() => loadConfig(settings), [settings]);
 
@@ -81,7 +106,7 @@ export default function NewDownload() {
 	const [quality, setQuality] = useState(DEFAULT);
 	const [container, setContainer] = useState(DEFAULT);
 	const [audioFormat, setAudioFormat] = useState(DEFAULT);
-	const [compat, setCompat] = useState(DEFAULT);
+	const [reencode, setReencode] = useState(DEFAULT);
 	const [playlist, setPlaylist] = useState(false);
 	const [selector, setSelector] = useState("");
 	const [ffmpegArgs, setFfmpegArgs] = useState("");
@@ -122,7 +147,12 @@ export default function NewDownload() {
 				: isAudio && audioFormat !== DEFAULT
 					? audioFormat
 					: undefined,
-		compat: isVideo ? asCompatMode(compat) : undefined,
+		reencode:
+			!isVideo || reencode === DEFAULT
+				? undefined
+				: reencode === OFF
+					? false
+					: asReencodeCodec(reencode),
 		selector: customizable && selector.trim() ? selector.trim() : undefined,
 		ffmpegArgs:
 			customizable && ffmpegArgs.trim() ? ffmpegArgs.trim() : undefined,
@@ -139,8 +169,15 @@ export default function NewDownload() {
 		quality: rule?.settings.quality ?? settings.quality,
 		container: rule?.settings.container ?? settings.videoContainer,
 		audioFormat: rule?.settings.audioFormat ?? settings.audioFormat,
-		compat: rule?.settings.compat ?? settings.compat,
+		reencode: resolveDefaultReencode(),
 	};
+
+	function resolveDefaultReencode(): ReencodeCodec | false {
+		const fromRule = rule?.settings.reencode;
+		if (typeof fromRule === "string") return fromRule;
+		const enabled = fromRule ?? settings.reencodeAlways;
+		return enabled ? settings.reencodeCodec : false;
+	}
 
 	const preview = useMemo(() => {
 		try {
@@ -158,7 +195,9 @@ export default function NewDownload() {
 			if (summary.kind === "video") {
 				lines.push(`Quality: ${qualityLabel(summary.quality)}`);
 				lines.push(`Container: ${summary.container}`);
-				lines.push(`Editing compatibility: ${COMPAT_TITLES[summary.compat]}`);
+				lines.push(
+					`Re-encode: ${summary.reencode ? summary.reencode.title : "off"}`,
+				);
 			}
 			if (summary.audioFormat)
 				lines.push(`Audio format: ${summary.audioFormat}`);
@@ -177,7 +216,7 @@ export default function NewDownload() {
 		quality,
 		container,
 		audioFormat,
-		compat,
+		reencode,
 		playlist,
 		selector,
 		ffmpegArgs,
@@ -295,7 +334,11 @@ export default function NewDownload() {
 				<Action.Open title="Open File" target={firstFile} />
 			)}
 			{phase === "done" && (
-				<Action title="New Download" icon={Icon.Download} onAction={reset} />
+				<Action
+					title="Another Download"
+					icon={Icon.Download}
+					onAction={reset}
+				/>
 			)}
 			<Action
 				title="Open Download Folder"
@@ -320,7 +363,7 @@ export default function NewDownload() {
 
 	return (
 		<Form
-			navigationTitle="New Download"
+			navigationTitle="Download Media"
 			isLoading={phase === "running"}
 			actions={actions}
 		>
@@ -393,22 +436,27 @@ export default function NewDownload() {
 			)}
 			{isVideo && (
 				<Form.Dropdown
-					id="compat"
-					title="Editing compatibility"
-					value={compat}
-					onChange={setCompat}
-					info="Video editors drop frames on MKV timestamps, AV1/VP9 and variable frame rate. Re-encoding fixes all of these at the cost of time."
+					id="reencode"
+					title="Re-encode"
+					value={reencode}
+					onChange={setReencode}
+					info="Re-encodes the video with a constant frame rate so editors do not drop frames. ProRes and DNxHR are editing codecs: smooth scrubbing, large files. GPU encoders fall back to the CPU if they fail."
 				>
 					<Form.Dropdown.Item
 						value={DEFAULT}
-						title={`Default – ${COMPAT_TITLES[defaults.compat]}`}
+						title={`Default – ${reencodeLabel(defaults.reencode)}`}
 					/>
-					{(Object.keys(COMPAT_TITLES) as CompatMode[]).map((mode) => (
-						<Form.Dropdown.Item
-							key={mode}
-							value={mode}
-							title={COMPAT_TITLES[mode]}
-						/>
+					<Form.Dropdown.Item value={OFF} title={reencodeLabel(false)} />
+					{CODEC_GROUPS.map((group) => (
+						<Form.Dropdown.Section key={group.title} title={group.title}>
+							{group.codecs.map((codec) => (
+								<Form.Dropdown.Item
+									key={codec}
+									value={codec}
+									title={CODEC_PRESETS[codec].title}
+								/>
+							))}
+						</Form.Dropdown.Section>
 					))}
 				</Form.Dropdown>
 			)}

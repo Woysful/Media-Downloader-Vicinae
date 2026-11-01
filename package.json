@@ -21,7 +21,7 @@
       "name": "video",
       "title": "Video",
       "subtitle": "Media Downloader",
-      "description": "Download a video. Keys: -f container, -q max height, -yt yt-dlp format selector, -ff ffmpeg args, -a extra yt-dlp args, -p whole playlist, -e re-encode for video editors",
+      "description": "Download a video. Keys: -f container, -q max height, -yt yt-dlp format selector, -ff ffmpeg args, -a extra yt-dlp args, -p whole playlist, -e [codec] re-encode for video editors",
       "mode": "no-view",
       "icon": "video.png",
       "keywords": [
@@ -33,7 +33,7 @@
         {
           "name": "query",
           "type": "text",
-          "placeholder": "URL [-q 1080] [-f mp4] [-p] [-e]",
+          "placeholder": "URL [-q 1080] [-f mp4] [-p] [-e prores]",
           "required": true
         }
       ]
@@ -103,9 +103,9 @@
     },
     {
       "name": "download",
-      "title": "New Download",
+      "title": "Download Media",
       "subtitle": "Media Downloader",
-      "description": "Download form with all options: type, quality, container, editing compatibility, playlist and custom yt-dlp/ffmpeg arguments",
+      "description": "Download form with all options: type, quality, container, re-encode codec, playlist and custom yt-dlp/ffmpeg arguments",
       "mode": "view",
       "icon": "ytdlp.png",
       "keywords": [
@@ -113,6 +113,20 @@
         "youtube",
         "download",
         "form"
+      ]
+    },
+    {
+      "name": "downloads",
+      "title": "Download List",
+      "subtitle": "Media Downloader",
+      "description": "Running and recent downloads with progress: cancel, open the file, download again or read the log",
+      "mode": "view",
+      "icon": "List.png",
+      "keywords": [
+        "downloads",
+        "progress",
+        "history",
+        "yt-dlp"
       ]
     },
     {
@@ -213,34 +227,75 @@
       ]
     },
     {
-      "name": "editingCompatibility",
-      "title": "Editing Compatibility",
-      "description": "How to avoid dropped or glitched frames in video editors. Prefer picks H.264/AAC streams when available; re-encode always produces H.264/AAC MP4 with a constant frame rate (slow)",
+      "name": "reencodeCodec",
+      "title": "Re-encode Codec",
+      "description": "Codec used by -e, by reencode=\"on\" domain rules and by \"Re-encode every video\". The result always has a constant frame rate. ProRes and DNxHR are editing codecs (large files); GPU encoders fall back to the CPU if they fail",
       "type": "dropdown",
       "required": false,
-      "default": "prefer",
+      "default": "h264",
       "data": [
         {
-          "title": "Prefer H.264/AAC (no re-encode)",
-          "value": "prefer"
+          "title": "H.264 (CPU, x264)",
+          "value": "h264"
         },
         {
-          "title": "Keep original streams",
-          "value": "original"
+          "title": "H.265 / HEVC (CPU, x265)",
+          "value": "h265"
         },
         {
-          "title": "Always re-encode (constant frame rate)",
-          "value": "reencode"
+          "title": "AV1 (CPU, SVT-AV1)",
+          "value": "av1"
+        },
+        {
+          "title": "ProRes 422 HQ (CPU, MOV)",
+          "value": "prores"
+        },
+        {
+          "title": "DNxHR HQ (CPU, MOV)",
+          "value": "dnxhr"
+        },
+        {
+          "title": "H.264 (NVIDIA NVENC)",
+          "value": "h264-nvenc"
+        },
+        {
+          "title": "H.265 / HEVC (NVIDIA NVENC)",
+          "value": "h265-nvenc"
+        },
+        {
+          "title": "AV1 (NVIDIA NVENC, RTX 40+)",
+          "value": "av1-nvenc"
+        },
+        {
+          "title": "H.264 (AMD/Intel VA-API)",
+          "value": "h264-vaapi"
+        },
+        {
+          "title": "H.265 / HEVC (AMD/Intel VA-API)",
+          "value": "h265-vaapi"
+        },
+        {
+          "title": "AV1 (AMD/Intel VA-API)",
+          "value": "av1-vaapi"
         }
       ]
     },
     {
-      "name": "reencodeArguments",
-      "title": "Re-encode Arguments",
-      "description": "ffmpeg output arguments used by the re-encode mode (-e). Frame rate is fixed automatically",
+      "name": "reencodeAlways",
+      "title": "",
+      "label": "Re-encode every video",
+      "description": "Re-encode all Video downloads, not only those with -e or a reencode domain rule",
+      "type": "checkbox",
+      "required": false,
+      "default": false
+    },
+    {
+      "name": "reencodeExtraArguments",
+      "title": "Re-encode Extra Arguments",
+      "description": "ffmpeg output arguments appended to the codec preset, e.g. -crf 16 or -preset slow",
       "type": "textfield",
       "required": false,
-      "default": "-c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart"
+      "placeholder": "-crf 16"
     },
     {
       "name": "defaultVideoSelector",
@@ -428,6 +483,15 @@
       "title": "Maintenance",
       "label": "Update the downloaded yt-dlp daily",
       "description": "Runs yt-dlp -U at most once a day. Only affects the copy downloaded by this extension, not a system installation",
+      "type": "checkbox",
+      "required": false,
+      "default": true
+    },
+    {
+      "name": "progressNotification",
+      "title": "Progress",
+      "label": "Show progress in a desktop notification",
+      "description": "Keeps one notification updated with the download progress, so it stays visible after the Vicinae window is closed (Linux, uses notify-send)",
       "type": "checkbox",
       "required": false,
       "default": true

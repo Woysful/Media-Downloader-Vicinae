@@ -1,4 +1,5 @@
 import { parseQuality, type Quality } from "./constants";
+import { parseReencode, type ReencodeCodec } from "./reencode";
 import { ShellWordsError, splitShellWords } from "./shell-words";
 
 export type QueryKey =
@@ -13,7 +14,7 @@ export type QueryKey =
 interface KeyDef {
 	names: readonly string[];
 	key: QueryKey;
-	takesValue: boolean;
+	takesValue: boolean | "optional";
 }
 
 const KEYS: readonly KeyDef[] = [
@@ -23,7 +24,11 @@ const KEYS: readonly KeyDef[] = [
 	{ names: ["-ff", "--ffmpeg"], key: "ffmpeg", takesValue: true },
 	{ names: ["-a", "--args"], key: "args", takesValue: true },
 	{ names: ["-p", "--playlist"], key: "playlist", takesValue: false },
-	{ names: ["-e", "--edit"], key: "reencode", takesValue: false },
+	{
+		names: ["-e", "--edit", "--reencode"],
+		key: "reencode",
+		takesValue: "optional",
+	},
 ];
 
 export const ALL_KEYS: readonly QueryKey[] = KEYS.map((k) => k.key);
@@ -36,7 +41,8 @@ export interface ParsedQuery {
 	ffmpegArgs?: string;
 	extraArgs?: string[];
 	playlist: boolean;
-	reencode: boolean;
+	/** true: re-encode with the configured codec; false: "-e off". */
+	reencode?: ReencodeCodec | boolean;
 }
 
 export class QueryError extends Error {}
@@ -82,7 +88,7 @@ export function parseQuery(
 		);
 	}
 
-	const result: ParsedQuery = { url: "", playlist: false, reencode: false };
+	const result: ParsedQuery = { url: "", playlist: false };
 	let url: string | undefined;
 
 	for (let i = 0; i < words.length; i++) {
@@ -109,7 +115,12 @@ export function parseQuery(
 			throw new QueryError(`"${name}" is not supported by this command`);
 
 		let value: string | undefined;
-		if (def.takesValue) {
+		if (def.takesValue === "optional") {
+			// "-e prores" takes the next word only when it names a codec, so
+			// "-e https://..." still treats the URL as the URL.
+			if (inline !== undefined) value = inline;
+			else if (parseReencode(words[i + 1]) !== undefined) value = words[++i];
+		} else if (def.takesValue) {
 			value = inline ?? words[++i];
 			if (value === undefined || value === "")
 				throw new QueryError(`"${name}" needs a value`);
@@ -151,9 +162,19 @@ export function parseQuery(
 			case "playlist":
 				result.playlist = true;
 				break;
-			case "reencode":
-				result.reencode = true;
+			case "reencode": {
+				if (value === undefined) {
+					result.reencode = true;
+					break;
+				}
+				const reencode = parseReencode(value);
+				if (reencode === undefined)
+					throw new QueryError(
+						`Unknown codec "${value}" (use e.g. h264, h265, av1, prores, dnxhr, h264-nvenc, h264-vaapi or off)`,
+					);
+				result.reencode = reencode;
 				break;
+			}
 		}
 	}
 

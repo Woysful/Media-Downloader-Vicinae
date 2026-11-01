@@ -35,14 +35,6 @@ const THUMBNAIL_AUDIO: readonly AudioFormat[] = [
 ];
 const THUMBNAIL_VIDEO: readonly VideoContainer[] = ["mp4", "mkv", "mov"];
 
-/**
- * original: keep whatever streams the site serves.
- * prefer:   prefer H.264 + AAC streams at the same resolution (no re-encoding).
- * reencode: re-encode to H.264/AAC MP4 with a constant frame rate.
- */
-export const COMPAT_MODES = ["original", "prefer", "reencode"] as const;
-export type CompatMode = (typeof COMPAT_MODES)[number];
-
 export type Quality = number | "best";
 
 export const DEFAULT_VIDEO_SELECTOR = "bv*+ba/b";
@@ -50,8 +42,6 @@ export const DEFAULT_AUDIO_SELECTOR = "ba/b";
 export const DEFAULT_OUTPUT_TEMPLATE = "%(title)s.%(ext)s";
 export const DEFAULT_PLAYLIST_TEMPLATE =
 	"%(playlist_title,playlist_id|Playlist)s/%(playlist_index&{:03d} - |)s%(title)s.%(ext)s";
-export const DEFAULT_REENCODE_ARGS =
-	"-c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart";
 
 export const COOKIE_BROWSERS = [
 	"brave",
@@ -81,15 +71,6 @@ export function asAudioFormat(
 	if (v in AUDIO_FORMAT_ALIASES) return AUDIO_FORMAT_ALIASES[v];
 	return (AUDIO_FORMATS as readonly string[]).includes(v)
 		? (v as AudioFormat)
-		: undefined;
-}
-
-export function asCompatMode(
-	value: string | undefined,
-): CompatMode | undefined {
-	const v = value?.trim().toLowerCase();
-	return (COMPAT_MODES as readonly string[]).includes(v ?? "")
-		? (v as CompatMode)
 		: undefined;
 }
 

@@ -28,8 +28,8 @@ import {
 import {
 	type ParsedQuery,
 	parseQuery,
-	type QueryKey,
 	QueryError,
+	type QueryKey,
 } from "./query";
 import { normalizeSettings, type Settings } from "./settings";
 import {
@@ -43,8 +43,8 @@ import {
 import {
 	isOutdated,
 	resolveToolchain,
-	ToolError,
 	type Toolchain,
+	ToolError,
 } from "./tools";
 
 const POLL_INTERVAL_MS = 500;
@@ -121,7 +121,7 @@ export function requestFromQuery(
 		selector: query.selector,
 		ffmpegArgs: query.ffmpegArgs,
 		extraArgs: query.extraArgs,
-		compat: query.reencode ? "reencode" : undefined,
+		reencode: query.reencode,
 		playlist: query.playlist,
 	};
 }
@@ -156,22 +156,27 @@ export async function startDownload(
 			tempDir: job.tempDir,
 			ffmpegPath: toolchain.ffmpeg,
 			jsRuntime: toolchain.jsRuntime,
+			encoders: toolchain.encoders,
 		});
 
 		startJob(job, {
 			url: req.url,
 			kind: req.kind,
+			request: req,
+			playlist: req.playlist,
 			downloadDir: settings.downloadDir,
 			ytdlp: { bin: toolchain.ytdlp, args: plan.args },
 			reencode:
-				plan.reencodeArgs && toolchain.ffmpeg
+				plan.encode && toolchain.ffmpeg
 					? {
 							ffmpeg: toolchain.ffmpeg,
 							ffprobe: toolchain.ffprobe ?? null,
-							args: plan.reencodeArgs,
+							attempts: plan.encode,
 						}
 					: null,
+			notice: plan.summary.reencode?.notice ?? null,
 			notify: settings.notify,
+			progressNotification: settings.progressNotification,
 			openFolder: settings.openFolder,
 			iconPath: path.join(environment.assetsPath, "icon.png"),
 		});
@@ -228,7 +233,12 @@ export async function monitorDownload(
 		await toast.success(title, message);
 	else await toast.failure(title, message);
 
-	if (settings.notify && state.status !== "cancelled") {
+	// A runner showing a progress notification turns it into the result itself.
+	if (
+		settings.notify &&
+		state.status !== "cancelled" &&
+		!state.notificationOwned
+	) {
 		sendDesktopNotification({
 			title,
 			body: message,

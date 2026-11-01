@@ -7,7 +7,6 @@ import {
 	type JobState,
 } from "../src/lib/status";
 
-// biome-ignore lint/style/noCommonJs: the runner is a plain CommonJS asset
 const runner =
 	require("../assets/runner.js") as typeof import("../assets/runner.js");
 
@@ -55,13 +54,20 @@ test("constant frame rate snaps VFR averages to standard rates", () => {
 	assert.equal(runner.parseRate("30000/1001")?.toFixed(3), "29.970");
 });
 
-test("re-encode args force CFR, skip cover art and keep user overrides last", () => {
+test("re-encode args force CFR, put device options before the input and user overrides last", () => {
 	const args = runner.buildEncodeArgs(
 		{ path: "/in.mkv", duration: 10, fps: 30 },
 		{ avgFrameRate: 23.976, frameRate: 24, duration: 10 },
-		{ args: ["-c:v", "libx264", "-r", "50"] },
+		{
+			codec: "h264-vaapi",
+			label: "H.264 (AMD/Intel VA-API)",
+			input: ["-vaapi_device", "/dev/dri/renderD128"],
+			output: ["-c:v", "h264_vaapi", "-r", "50"],
+			ext: "mp4",
+		},
 		"/out.mp4",
 	);
+	assert.ok(args.indexOf("-vaapi_device") < args.indexOf("-i"));
 	assert.deepEqual(args.slice(args.indexOf("-map"), args.indexOf("-map") + 4), [
 		"-map",
 		"0:V:0?",
@@ -79,6 +85,32 @@ test("re-encode args force CFR, skip cover art and keep user overrides last", ()
 	assert.equal(args.at(-1), "/out.mp4");
 });
 
+test("progress notification text follows the job state", () => {
+	const state = runner.createState(1, 0);
+	assert.equal(runner.progressText(state, false), null);
+	runner.applyLine(state, "MDL|start|3|5|22|Song");
+	runner.applyLine(
+		state,
+		"MDL|dl|downloading|256|1024|NA|2097152|90|NA|NA|avc1|mp4a",
+	);
+	assert.deepEqual(runner.progressText(state, true), {
+		title: "[3/5] Downloading 25% · 2.0 MiB/s · ETA 1:30",
+		body: "Song",
+		percent: 25,
+	});
+	assert.equal(
+		runner.progressText(state, false)?.title.startsWith("Downloading"),
+		true,
+	);
+	runner.applyLine(state, "MDL|pp|started|Merger");
+	assert.deepEqual(runner.progressText(state, false), {
+		title: "Merging…",
+		body: "Song",
+		percent: null,
+	});
+	state.status = "completed";
+	assert.equal(runner.progressText(state, false), null);
+});
 test("toast text puts numbers in the title and the name in the message", () => {
 	const state = runner.createState(1, 0) as JobState;
 	runner.applyLine(state, "MDL|start|NA|NA|137+140|My video");

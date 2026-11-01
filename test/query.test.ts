@@ -46,6 +46,17 @@ test("supports flags, long forms and URL in any position", () => {
 	assert.deepEqual(q.extraArgs, ["--limit-rate", "1M"]);
 });
 
+test("-e takes an optional codec without swallowing the URL", () => {
+	assert.equal(parseQuery("https://a.com -e").reencode, true);
+	assert.equal(parseQuery("https://a.com -e prores").reencode, "prores");
+	assert.equal(parseQuery("-e a.com/v").reencode, true);
+	assert.equal(parseQuery("-e a.com/v").url, "https://a.com/v");
+	assert.equal(parseQuery("https://a.com --edit=hevc").reencode, "h265");
+	assert.equal(parseQuery("https://a.com -e off").reencode, false);
+	assert.equal(parseQuery("https://a.com").reencode, undefined);
+	assert.throws(() => parseQuery("https://a.com --edit=h266"), /Unknown codec/);
+});
+
 test("rejects bad input with readable errors", () => {
 	assert.throws(() => parseQuery("-f mp4"), QueryError);
 	assert.throws(() => parseQuery("https://a.com -x"), /Unknown key/);

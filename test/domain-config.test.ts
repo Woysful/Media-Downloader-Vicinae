@@ -28,7 +28,7 @@ test("parses rules, keeping ':' inside values", () => {
 	assert.equal(rules[0].settings.quality, 1080);
 	assert.equal(rules[2].settings.ffmpegArgs, "-vf scale=1280:720 -c:a aac");
 	assert.deepEqual(rules[3].domains, ["x.com", "twitter.com"]);
-	assert.equal(rules[3].settings.compat, "reencode");
+	assert.equal(rules[3].settings.reencode, true, "legacy compat key");
 	assert.equal(rules[3].settings.extraArgs, "--cookies-from-browser firefox");
 });
 
@@ -37,6 +37,23 @@ test("reports problems with line numbers instead of silently ignoring them", () 
 	assert.ok(warnings.some((w) => w.startsWith("Line 7:")));
 	assert.ok(warnings.some((w) => /Line 8: unknown format "wmv"/.test(w)));
 	assert.ok(warnings.some((w) => /Line 8: unknown key "foo"/.test(w)));
+});
+
+test("reencode accepts on/off and codec names", () => {
+	const { rules, warnings } = parseDomainConfig(
+		[
+			'a.com: reencode="on"',
+			'b.com: reencode="off"',
+			'c.com: reencode="ProRes"',
+			'd.com: reencode="hevc_nvenc"',
+			'e.com: reencode="h266"',
+		].join("\n"),
+	);
+	assert.deepEqual(
+		rules.map((r) => r.settings.reencode),
+		[true, false, "prores", "h265-nvenc"],
+	);
+	assert.ok(warnings.some((w) => /Line 5: invalid reencode "h266"/.test(w)));
 });
 
 test("matches subdomains and prefers the most specific rule", () => {
@@ -61,7 +78,7 @@ test("default config has only commented examples and parses cleanly", () => {
 		.join("\n");
 	const examples = parseDomainConfig(uncommented);
 	assert.deepEqual(examples.warnings, []);
-	assert.equal(examples.rules.length, 5);
+	assert.equal(examples.rules.length, 6);
 });
 
 test("creates the config file once, including missing directories", () => {

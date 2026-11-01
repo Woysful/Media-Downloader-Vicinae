@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { environment } from "@vicinae/api";
+import type { DownloadRequest } from "./plan";
+import type { EncodeAttempt } from "./reencode";
 import { isTerminal, type JobState } from "./status";
 import { searchPath } from "./tools";
 
@@ -12,12 +14,21 @@ export interface JobSpec {
 	id: string;
 	url: string;
 	kind: string;
+	/** Kept so the Download List can start the same download again. */
+	request: DownloadRequest;
+	playlist: boolean;
 	createdAt: number;
 	tempDir: string;
 	downloadDir: string;
 	ytdlp: { bin: string; args: string[]; env?: Record<string, string> };
-	reencode: { ffmpeg: string; ffprobe: string | null; args: string[] } | null;
+	reencode: {
+		ffmpeg: string;
+		ffprobe: string | null;
+		attempts: EncodeAttempt[];
+	} | null;
+	notice: string | null;
 	notify: boolean;
+	progressNotification: boolean;
 	openFolder: boolean;
 	iconPath: string | null;
 }
@@ -135,6 +146,8 @@ function deadState(
 		total: null,
 		files: previous?.files ?? [],
 		error: cancelled ? null : error,
+		warning: previous?.warning ?? null,
+		notificationOwned: previous?.notificationOwned ?? false,
 		exitCode: null,
 		pid: previous?.pid ?? 0,
 		startedAt: previous?.startedAt ?? now,
@@ -180,6 +193,48 @@ function listJobDirs(): string[] {
 	}
 }
 
+export interface JobEntry {
+	job: Job;
+	spec?: JobSpec;
+	state?: JobState;
+	active: boolean;
+}
+
+function readSpec(dir: string): JobSpec | undefined {
+	try {
+		return JSON.parse(
+			fs.readFileSync(path.join(dir, "job.json"), "utf8"),
+		) as JobSpec;
+	} catch {
+		return undefined;
+	}
+}
+
+function jobFromDir(dir: string): Job {
+	return { id: path.basename(dir), dir, tempDir: path.join(dir, "tmp") };
+}
+
+/** All jobs still on disk, newest first. */
+export function listJobs(): JobEntry[] {
+	return listJobDirs()
+		.map((dir) => {
+			const job = jobFromDir(dir);
+			const state = readJobState(job);
+			return {
+				job,
+				spec: readSpec(dir),
+				state,
+				active: !state || !isTerminal(state.status),
+			};
+		})
+		.sort((a, b) => (b.spec?.createdAt ?? 0) - (a.spec?.createdAt ?? 0));
+}
+
+/** Forgets a finished job; downloaded files stay where they are. */
+export function removeJob(job: Job): void {
+	fs.rmSync(job.dir, { recursive: true, force: true });
+}
+
 export function listActiveJobs(): Job[] {
 	return listJobDirs()
 		.filter((dir) => {
@@ -188,11 +243,7 @@ export function listActiveJobs(): Job[] {
 			const pid = state?.pid || readPid(dir);
 			return pid !== undefined && isProcessAlive(pid);
 		})
-		.map((dir) => ({
-			id: path.basename(dir),
-			dir,
-			tempDir: path.join(dir, "tmp"),
-		}));
+		.map(jobFromDir);
 }
 
 function killGroup(pid: number, signal: NodeJS.Signals): void {

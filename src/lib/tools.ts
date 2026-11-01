@@ -4,6 +4,7 @@ import * as https from "node:https";
 import * as os from "node:os";
 import * as path from "node:path";
 import { environment } from "@vicinae/api";
+import type { EncoderSupport } from "./reencode";
 import type { Settings } from "./settings";
 
 export interface Toolchain {
@@ -14,6 +15,7 @@ export interface Toolchain {
 	ffprobe?: string;
 	/** Value for `--js-runtimes`, set when the yt-dlp build supports it. */
 	jsRuntime?: string;
+	encoders?: EncoderSupport;
 }
 
 export class ToolError extends Error {}
@@ -269,6 +271,44 @@ export function isOutdated(version: string): boolean {
 	return (versionAgeDays(version) ?? 0) > OUTDATED_AFTER_DAYS;
 }
 
+/** Video encoders listed by `ffmpeg -encoders`. */
+export function parseEncoderList(output: string): Set<string> {
+	const encoders = new Set<string>();
+	for (const line of output.split("\n")) {
+		const m = /^\s*V[A-Z.]{5}\s+(\S+)/.exec(line);
+		if (m) encoders.add(m[1]);
+	}
+	return encoders;
+}
+
+function findVaapiDevice(): string | undefined {
+	try {
+		const nodes = fs
+			.readdirSync("/dev/dri")
+			.filter((n) => n.startsWith("renderD"))
+			.sort();
+		return nodes.length ? path.join("/dev/dri", nodes[0]) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+async function probeEncoders(
+	ffmpeg: string,
+): Promise<EncoderSupport | undefined> {
+	try {
+		const output = await run(ffmpeg, ["-hide_banner", "-encoders"], 15_000);
+		return {
+			encoders: parseEncoderList(output),
+			vaapiDevice: findVaapiDevice(),
+		};
+	} catch (error) {
+		// Without the list every encoder is attempted and failures fall back at run time.
+		console.warn("Could not list ffmpeg encoders:", error);
+		return undefined;
+	}
+}
+
 export async function resolveToolchain(
 	settings: Settings,
 	report: Report,
@@ -297,6 +337,7 @@ export async function resolveToolchain(
 		ytdlpIsLocal: local,
 		ffmpeg,
 		ffprobe,
+		encoders: await probeEncoders(ffmpeg),
 		// yt-dlp needs a JavaScript runtime for YouTube; the Node binary running
 		// this extension is always available, unlike deno.
 		jsRuntime:

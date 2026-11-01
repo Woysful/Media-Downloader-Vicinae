@@ -31,6 +31,10 @@ export interface JobState {
 	total: number | null;
 	files: JobFile[];
 	error: string | null;
+	/** Non-fatal problem, e.g. the GPU encoder failed and the CPU one was used. */
+	warning: string | null;
+	/** The runner shows (and finalises) a desktop notification for this job. */
+	notificationOwned: boolean;
 	exitCode: number | null;
 	pid: number;
 	startedAt: number;
@@ -121,7 +125,7 @@ export function describeProgress(
 				state.streamCount > 1 && state.stream ? `${state.stream} ` : "";
 			parts.push(
 				state.percent === null
-					? `Downloading ${label}`.trimEnd() + "…"
+					? `${`Downloading ${label}`.trimEnd()}…`
 					: `${label}${state.percent.toFixed(1)}%`,
 			);
 			if (state.speed) parts.push(`${formatBytes(state.speed)}/s`);
@@ -159,7 +163,10 @@ export function describeOutcome(
 					title: `Downloaded 1 of ${skipped} playlist items`,
 					message: `${saved} · add -p for all`,
 				};
-			return { title: "Download complete", message: saved };
+			return {
+				title: "Download complete",
+				message: state.warning ? `${saved} · ${state.warning}` : saved,
+			};
 		case "partial":
 			return {
 				title: `Downloaded ${names.length} file(s) with errors`,

@@ -3,14 +3,13 @@ import * as path from "node:path";
 import {
 	type AudioFormat,
 	asAudioFormat,
-	asCompatMode,
 	asVideoContainer,
-	type CompatMode,
 	parseQuality,
 	type Quality,
 	type VideoContainer,
 } from "./constants";
 import { configHome } from "./paths";
+import { parseReencode, type ReencodeCodec } from "./reencode";
 
 export const CONFIG_FILE_NAME = "domain-config.txt";
 
@@ -22,7 +21,8 @@ export interface RuleSettings {
 	audioFfmpegArgs?: string;
 	quality?: Quality;
 	extraArgs?: string;
-	compat?: CompatMode;
+	/** true: re-encode with the preference codec; false: never re-encode. */
+	reencode?: ReencodeCodec | boolean;
 }
 
 export interface DomainRule {
@@ -47,7 +47,9 @@ export const DEFAULT_CONFIG_TEXT = `# Media Downloader - per-domain settings
 #   format        video container: mp4, mkv, webm, mov, avi, flv
 #   quality       maximum video height: 2160, 1440, 1080, 720, ... or best
 #   ffmpeg        extra ffmpeg arguments used when merging/remuxing video
-#   compat        editing compatibility: original, prefer (H.264/AAC streams) or reencode
+#   reencode      re-encode for video editors: on, off or a codec (h264, h265, av1,
+#                 prores, dnxhr, h264-nvenc, h265-nvenc, av1-nvenc, h264-vaapi,
+#                 h265-vaapi, av1-vaapi). "on" uses the codec from the preferences
 #   audio-format  audio format for the Audio command: m4a, mp3, opus, ogg, flac, wav
 #   audio-ffmpeg  extra ffmpeg arguments used when extracting audio
 #   args          any extra yt-dlp arguments, e.g. "--cookies-from-browser firefox"
@@ -58,7 +60,8 @@ export const DEFAULT_CONFIG_TEXT = `# Media Downloader - per-domain settings
 #
 # Examples (remove the leading "#" to enable):
 # youtube.com, youtu.be: quality="1080" format="mp4"
-# instagram.com: compat="reencode"
+# instagram.com: reencode="on"
+# twitch.tv: reencode="prores"
 # twitter.com, x.com: format="mp4"
 # vimeo.com: yt-dlp="bv*+ba/b" args="--cookies-from-browser firefox"
 # soundcloud.com: audio-format="mp3"
@@ -72,7 +75,9 @@ const KEY_MAP: Record<string, keyof RuleSettings> = {
 	"audio-ffmpeg": "audioFfmpegArgs",
 	quality: "quality",
 	args: "extraArgs",
-	compat: "compat",
+	reencode: "reencode",
+	// Pre-2.0 name of the setting.
+	compat: "reencode",
 };
 
 export function configFilePath(customDir?: string): string {
@@ -200,11 +205,13 @@ function applySetting(
 			settings.quality = quality;
 			return;
 		}
-		case "compat": {
-			const compat = asCompatMode(value);
-			if (!compat)
-				return `invalid compat "${value}" (original, prefer, reencode)`;
-			settings.compat = compat;
+		case "reencode": {
+			const v = value.trim().toLowerCase();
+			const reencode =
+				v === "reencode" ? true : v === "prefer" ? false : parseReencode(v);
+			if (reencode === undefined)
+				return `invalid reencode "${value}" (on, off or a codec such as h264, prores, h264-nvenc)`;
+			settings.reencode = reencode;
 			return;
 		}
 		default:

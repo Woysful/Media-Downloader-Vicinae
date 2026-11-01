@@ -12,7 +12,10 @@
 #   format        video container: mp4, mkv, webm, mov, avi, flv
 #   quality       maximum video height: 2160, 1440, 1080, 720, ... or best
 #   ffmpeg        extra ffmpeg arguments used when merging/remuxing video
-#   compat        editing compatibility: original, prefer (H.264/AAC streams) or reencode
+#   reencode      re-encode for video editors: on, off or a codec (h264, h265, av1,
+#                 prores, dnxhr, h264-nvenc, h265-nvenc, av1-nvenc, h264-vaapi,
+#                 h265-vaapi, av1-vaapi). "on" uses the codec from the preferences.
+#                 GPU codecs fall back to the CPU when they are not available
 #   audio-format  audio format for the Audio command: m4a, mp3, opus, ogg, flac, wav
 #   audio-ffmpeg  extra ffmpeg arguments used when extracting audio
 #   args          any extra yt-dlp arguments
@@ -20,14 +23,18 @@
 # A domain also matches its subdomains ("youtube.com" covers music.youtube.com).
 # Priority: keys typed after the URL > this file > extension preferences.
 
-# YouTube: up to 1080p in MP4, H.264/AAC when YouTube offers it
-youtube.com, youtu.be: quality="1080" format="mp4" compat="prefer"
+# YouTube: up to 1080p in MP4
+youtube.com, youtu.be: quality="1080" format="mp4"
 
 # YouTube Music: MP3 for the Audio command
 music.youtube.com: audio-format="mp3"
 
-# Instagram: always re-encode, its videos often have a variable frame rate
-instagram.com: compat="reencode"
+# Instagram: always re-encode (codec from the preferences), its videos often
+# have a variable frame rate
+instagram.com: reencode="on"
+
+# Reddit: re-encode on an NVIDIA GPU, falls back to x264 without one
+reddit.com: reencode="h264-nvenc"
 
 # Twitter/X
 twitter.com, x.com: format="mp4"
@@ -38,5 +45,5 @@ vimeo.com: yt-dlp="bv*+ba/b" args="--cookies-from-browser firefox"
 # TikTok: keep the video stream, convert the audio to AAC while merging
 tiktok.com: format="mp4" ffmpeg="-c:v copy -c:a aac"
 
-# Twitch VODs: keep the original MKV and skip the "prefer" sorting
-twitch.tv: format="mkv" compat="original"
+# Twitch VODs: ProRes for editing clips in DaVinci Resolve / Premiere
+twitch.tv: reencode="prores"
