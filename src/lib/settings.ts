@@ -11,16 +11,22 @@ import {
 	type VideoContainer,
 } from "./constants";
 import { defaultDownloadDir, normalizeUserPath } from "./paths";
-import { asReencodeCodec, type ReencodeCodec } from "./reencode";
+import {
+	type AudioReencodeCodec,
+	asAudioReencodeCodec,
+	asReencodeCodec,
+	type ReencodeCodec,
+} from "./reencode";
 
 export interface Settings {
 	downloadDir: string;
 	videoContainer: VideoContainer;
 	videoSelector: string;
 	quality: Quality;
-	/** Re-encode every video download (otherwise only with -e or a domain rule). */
-	reencodeAlways: boolean;
-	reencodeCodec: ReencodeCodec;
+	/** Video codec, or null when videos are not re-encoded by default. */
+	reencodeCodec: ReencodeCodec | null;
+	/** Audio codec for the audio track of video files, or null to keep it. */
+	reencodeAudioCodec: AudioReencodeCodec | null;
 	reencodeExtraArgs: string;
 	audioFormat: AudioFormat;
 	audioQuality: string;
@@ -62,8 +68,9 @@ export function normalizeSettings(raw: Record<string, unknown>): Settings {
 		videoContainer: asVideoContainer(text(raw.defaultVideoFormat)) ?? "mp4",
 		videoSelector: text(raw.defaultVideoSelector) ?? DEFAULT_VIDEO_SELECTOR,
 		quality: parseQuality(text(raw.defaultQuality)) ?? "best",
-		reencodeAlways: flag(raw.reencodeAlways, false),
-		reencodeCodec: asReencodeCodec(text(raw.reencodeCodec)) ?? "h264",
+		reencodeCodec: asReencodeCodec(text(raw.reencodeCodec)) ?? null,
+		reencodeAudioCodec:
+			asAudioReencodeCodec(text(raw.reencodeAudioCodec)) ?? null,
 		reencodeExtraArgs: text(raw.reencodeExtraArguments) ?? "",
 		audioFormat: asAudioFormat(text(raw.defaultAudioFormat)) ?? "m4a",
 		audioQuality: /^(\d|10|\d+[kK])$/.test(audioQuality) ? audioQuality : "0",

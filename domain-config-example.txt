@@ -16,6 +16,8 @@
 #                 prores, dnxhr, h264-nvenc, h265-nvenc, av1-nvenc, h264-vaapi,
 #                 h265-vaapi, av1-vaapi). "on" uses the codec from the preferences.
 #                 GPU codecs fall back to the CPU when they are not available
+#   audio-reencode  re-encode the audio track of a video: on, off or a codec
+#                 (aac, opus, mp3, flac, pcm)
 #   audio-format  audio format for the Audio command: m4a, mp3, opus, ogg, flac, wav
 #   audio-ffmpeg  extra ffmpeg arguments used when extracting audio
 #   args          any extra yt-dlp arguments
@@ -42,8 +44,8 @@ twitter.com, x.com: format="mp4"
 # Vimeo: logged-in cookies from Firefox
 vimeo.com: yt-dlp="bv*+ba/b" args="--cookies-from-browser firefox"
 
-# TikTok: keep the video stream, convert the audio to AAC while merging
-tiktok.com: format="mp4" ffmpeg="-c:v copy -c:a aac"
+# TikTok: keep the video stream, convert the audio track to AAC
+tiktok.com: format="mp4" audio-reencode="aac"
 
 # Twitch VODs: ProRes for editing clips in DaVinci Resolve / Premiere
 twitch.tv: reencode="prores"

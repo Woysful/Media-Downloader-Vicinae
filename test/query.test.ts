@@ -57,6 +57,22 @@ test("-e takes an optional codec without swallowing the URL", () => {
 	assert.throws(() => parseQuery("https://a.com --edit=h266"), /Unknown codec/);
 });
 
+test("-ea re-encodes the audio track with an optional codec", () => {
+	assert.equal(parseQuery("https://a.com -ea").audioReencode, true);
+	assert.equal(parseQuery("https://a.com -ea opus").audioReencode, "opus");
+	assert.equal(
+		parseQuery("https://a.com --audio-reencode=pcm").audioReencode,
+		"pcm",
+	);
+	assert.equal(parseQuery("-ea a.com/v").url, "https://a.com/v");
+	assert.equal(parseQuery("https://a.com -ea off").audioReencode, false);
+	assert.equal(parseQuery("https://a.com").audioReencode, undefined);
+	assert.throws(
+		() => parseQuery("https://a.com --audio-reencode=vorbis"),
+		/Unknown audio codec/,
+	);
+});
+
 test("rejects bad input with readable errors", () => {
 	assert.throws(() => parseQuery("-f mp4"), QueryError);
 	assert.throws(() => parseQuery("https://a.com -x"), /Unknown key/);

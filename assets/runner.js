@@ -28,7 +28,7 @@ const NOTIFY_INTERVAL_MS = 1500;
 /**
  * @typedef {{ path: string, duration: number | null, fps: number | null }} FileEntry
  * @typedef {{ index: number, count: number | null }} PlaylistItem
- * @typedef {{ codec: string, label: string, input: string[], output: string[], ext: string }} EncodeAttempt
+ * @typedef {{ codec?: string, label: string, input: string[], output: string[], ext: string, video: boolean }} EncodeAttempt
  * @typedef {{
  *   status: "starting" | "downloading" | "processing" | "encoding" | "completed" | "partial" | "failed" | "cancelled",
  *   stage: string | null,
@@ -271,7 +271,9 @@ function snapFrameRate(rate) {
  * @param {string} output
  */
 function buildEncodeArgs(file, probe, attempt, output) {
-	const rate = snapFrameRate(probe?.avgFrameRate ?? probe?.frameRate ?? file.fps);
+	const rate = attempt.video
+		? snapFrameRate(probe?.avgFrameRate ?? probe?.frameRate ?? file.fps)
+		: null;
 	return [
 		"-hide_banner",
 		"-nostdin",
@@ -287,9 +289,9 @@ function buildEncodeArgs(file, probe, attempt, output) {
 		"0",
 		"-map_chapters",
 		"0",
-		"-fps_mode",
-		"cfr",
-		...(rate ? ["-r", rate] : []),
+		...(attempt.video
+			? ["-fps_mode", "cfr", ...(rate ? ["-r", rate] : [])]
+			: []),
 		...attempt.output,
 		"-progress",
 		"pipe:1",

@@ -122,6 +122,7 @@ export function requestFromQuery(
 		ffmpegArgs: query.ffmpegArgs,
 		extraArgs: query.extraArgs,
 		reencode: query.reencode,
+		audioReencode: query.audioReencode,
 		playlist: query.playlist,
 	};
 }

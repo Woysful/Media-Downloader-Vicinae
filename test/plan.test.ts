@@ -31,11 +31,19 @@ test("settings fall back to sane defaults for null/unknown preference values", (
 	assert.equal(s.videoContainer, "mp4");
 	assert.equal(s.audioFormat, "vorbis");
 	assert.equal(s.cookiesFromBrowser, undefined);
-	assert.equal(s.reencodeCodec, "h264");
-	assert.equal(s.reencodeAlways, false);
+	assert.equal(s.reencodeCodec, null);
+	assert.equal(s.reencodeAudioCodec, null);
 	assert.equal(
 		normalizeSettings({ reencodeCodec: "bogus" }).reencodeCodec,
-		"h264",
+		null,
+	);
+	assert.equal(
+		normalizeSettings({ reencodeAudioCodec: "opus" }).reencodeAudioCodec,
+		"opus",
+	);
+	assert.equal(
+		normalizeSettings({ reencodeAudioCodec: "bogus" }).reencodeAudioCodec,
+		null,
 	);
 	assert.equal(
 		normalizeSettings({ downloadDirectory: "~/Videos" }).downloadDir.endsWith(
@@ -175,7 +183,6 @@ test("codec precedence: query codec > rule codec > preference codec; -e off wins
 	);
 
 	const always = normalizeSettings({
-		reencodeAlways: true,
 		reencodeCodec: "av1",
 	});
 	assert.equal(
@@ -184,6 +191,69 @@ test("codec precedence: query codec > rule codec > preference codec; -e off wins
 	);
 	const off = parseDomainConfig(`example.com: reencode="off"`).rules[0];
 	assert.equal(buildPlan(req(), always, off, env).encode, null);
+});
+
+test("-e still works when the preference says No re-encode", () => {
+	const plan = buildPlan(req({ reencode: true }), settings, undefined, env);
+	assert.equal(plan.encode?.[0].codec, "h264");
+});
+
+test("audio re-encode keeps the video stream and container when video re-encoding is off", () => {
+	const s = normalizeSettings({ reencodeAudioCodec: "aac" });
+	const mp4 = buildPlan(req(), s, undefined, env);
+	assert.equal(argValue(mp4.args, "--merge-output-format"), "mp4");
+	assert.equal(argValue(mp4.args, "--remux-video"), "mp4");
+	assert.equal(mp4.encode?.length, 1);
+	const [attempt] = mp4.encode ?? [];
+	assert.equal(attempt.video, false);
+	assert.equal(attempt.ext, "mp4");
+	assert.deepEqual(attempt.output.slice(0, 6), [
+		"-c:v",
+		"copy",
+		"-c:a",
+		"aac",
+		"-b:a",
+		"256k",
+	]);
+	assert.deepEqual(attempt.output.slice(-2), ["-movflags", "+faststart"]);
+	assert.equal(mp4.summary.reencode, null);
+	assert.equal(mp4.summary.audioReencode?.codec, "aac");
+
+	const mkv = buildPlan(req({ container: "mkv" }), s, undefined, env);
+	const [mkvAttempt] = mkv.encode ?? [];
+	assert.equal(mkvAttempt.ext, "mkv");
+	assert.ok(!mkvAttempt.output.includes("-movflags"));
+	assert.equal(argValue(mkv.args, "--remux-video"), "mkv");
+	assert.equal(mkv.summary.container, "mkv");
+
+	const noAudio = buildPlan(req({ audioReencode: false }), s, undefined, env);
+	assert.equal(noAudio.encode, null);
+});
+
+test("audio re-encode overrides the video preset's audio arguments", () => {
+	const plan = buildPlan(
+		req({ reencode: "prores", audioReencode: "aac" }),
+		settings,
+		undefined,
+		env,
+	);
+	const [attempt] = plan.encode ?? [];
+	assert.equal(attempt.codec, "prores");
+	assert.equal(attempt.video, true);
+	assert.equal(argValue(attempt.output, "-c:a"), "aac");
+	assert.equal(plan.summary.reencode?.codec, "prores");
+	assert.equal(plan.summary.audioReencode?.codec, "aac");
+});
+
+test("missing audio encoders are reported before downloading", () => {
+	assert.throws(
+		() =>
+			buildPlan(req({ audioReencode: "opus" }), settings, undefined, {
+				...env,
+				encoders: { encoders: new Set(["libx264", "aac"]) },
+			}),
+		/no libopus encoder/,
+	);
 });
 
 test("GPU codecs fall back to the CPU encoder", () => {

@@ -9,10 +9,9 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) based downloader for [Vicinae](http
 ## Features
 
 - Quick commands that take a URL plus optional keys, and a **Download Media** form with every option
-- Progress in Vicinae's status bar: percent, speed, ETA, playlist position and post-processing stage
 - Downloads keep running when you close Vicinae or start another command. Their progress stays visible in a desktop notification and in **Download List**
-- Single video by default; whole playlists only with `-p`, saved into their own folder
-- Re-encoding for video editors (H.264, H.265, AV1, ProRes, DNxHR), on the CPU or the GPU (NVENC, VA-API) with a fallback to the CPU
+- Download single video or whole playlist
+- Re-encoding Video or Audio stream after downloading the file
 - Per-domain settings file
 - yt-dlp is downloaded automatically when it is not installed, and kept up to date
 
@@ -58,10 +57,15 @@ Type keys after the URL (or before it). Values with spaces must be quoted, with 
 | `-f` | `--format` | Video container, or audio format for `Audio` | `-f mkv`, `-f mp3` |
 | `-q` | `--quality` | Maximum video height | `-q 1080` |
 | `-yt` | `--yt-dlp` | yt-dlp format selector | `-yt 'bv*[vcodec^=avc1]+ba/b'` |
-| `-ff` | `--ffmpeg` | ffmpeg arguments for merging/remuxing (audio: extraction; `-e`: appended to the encoder arguments) | `-ff '-c:a aac'` |
+| `-ff` | `--ffmpeg` | ffmpeg arguments for merging/remuxing (audio: extraction; `-e`/`-ea`: appended to the encoder arguments) | `-ff '-c:a aac'` |
 | `-a` | `--args` | Any extra yt-dlp arguments | `-a '--limit-rate 5M'` |
 | `-p` | `--playlist` | Download the whole playlist | `-p` |
-| `-e` | `--edit`, `--reencode` | Re-encode for video editors with a constant frame rate. Optional codec, see below | `-e`, `-e prores`, `-e off` |
+| `-e` | `--edit`, `--reencode` | Re-encode the video for editors with a constant frame rate. Optional codec, see below | `-e`, `-e prores`, `-e off` |
+| `-ea` | `--audio-encode`, `--audio-reencode` | Re-encode the audio track of a video. Optional codec, see below | `-ea`, `-ea pcm`, `-ea off` |
+
+Video re-encode codecs: `h264`, `h265`, `av1`, `prores`, `dnxhr`, `h264-nvenc`, `h265-nvenc`, `av1-nvenc`, `h264-vaapi`, `h265-vaapi`, `av1-vaapi`.
+Audio re-encode codecs: `aac`, `opus`, `mp3`, `flac`, `pcm`. Audio re-encoding copies the video stream and keeps the chosen container unless video re-encoding is also enabled.
+`-e` and `-ea` without a codec use H.264 and AAC when the preferences are set to No re-encode.
 
 `Video Best` and `Audio Best` accept `-p` and `-a`.
 
@@ -79,7 +83,8 @@ With `-p` the files go into a folder named after the playlist: `Playlist Title/0
 |:--|:--|
 | Download Directory | Empty means your XDG download folder (usually `~/Downloads`) |
 | Video Container, Video Quality, yt-dlp Video Format | Defaults for `Video` |
-| Re-encode Codec, Re-encode every video, Re-encode Extra Arguments | See above || Audio Format, Audio Quality | Defaults for `Audio` |
+| Video Re-encode, Audio Re-encode, Re-encode Extra Arguments | See above. No re-encode leaves that stream untouched by default |
+| Audio Format, Audio Quality | Defaults for `Audio` |
 | Embed metadata / thumbnail | Thumbnails are embedded only into containers that support cover art |
 | Cookies From Browser | For age-restricted, private and members-only videos |
 | Extra yt-dlp Arguments | Added to every download |
@@ -102,6 +107,7 @@ youtube.com, youtu.be: quality="1080" format="mp4"
 music.youtube.com: audio-format="mp3"
 instagram.com: reencode="on"
 twitch.tv: reencode="prores"
+tiktok.com: audio-reencode="aac"
 twitter.com, x.com: format="mp4"
 vimeo.com: yt-dlp="bv*+ba/b" args="--cookies-from-browser firefox"
 ```
@@ -113,6 +119,7 @@ vimeo.com: yt-dlp="bv*+ba/b" args="--cookies-from-browser firefox"
 | `quality` | Maximum video height |
 | `ffmpeg` | ffmpeg arguments for merging/remuxing video |
 | `reencode` | `on` (codec from the preferences), `off` or a codec name from the table above |
+| `audio-reencode` | `on` (audio codec from the preferences), `off` or `aac`, `opus`, `mp3`, `flac`, `pcm` |
 | `audio-format` | Format for the `Audio` command |
 | `audio-ffmpeg` | ffmpeg arguments for audio extraction |
 | `args` | Extra yt-dlp arguments |
@@ -125,6 +132,7 @@ A domain also matches its subdomains, and the most specific rule wins, so `music
 - **"Requested format is not available":** your `-yt` selector or the domain rule's `yt-dlp` value matches nothing on that site. Try without it.
 - **Container errors after changing `-f`:** remuxing only changes the container, so codecs must be supported by it (for example, VP9 in AVI is not). Use MP4/MKV, or `-e`.
 - **Re-encode is slow:** pick a GPU codec (`h264-nvenc`, `h264-vaapi`) or add `-ff '-preset fast'`. ProRes and DNxHR are fast to encode but produce very large files.
+- **Audio re-encode fails in some containers:** WebM accepts Opus, while MP4/MOV accept AAC and MP3; PCM is safest in MOV or MKV. MKV accepts every audio codec offered here.
 - **The status disappears when Vicinae closes:** Vicinae removes its own status when the window is closed. The download keeps running; follow it in the progress notification or in **Download List**.
 - **Logs:** each download keeps its yt-dlp output for 3 days in the extension support folder, usually `~/.local/share/vicinae/support/media-downloader/jobs/<id>/output.log`.
 

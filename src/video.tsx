@@ -12,5 +12,6 @@ export default async function Video(
 		"args",
 		"playlist",
 		"reencode",
+		"audioReencode",
 	]);
 }

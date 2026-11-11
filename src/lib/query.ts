@@ -1,5 +1,10 @@
 import { parseQuality, type Quality } from "./constants";
-import { parseReencode, type ReencodeCodec } from "./reencode";
+import {
+	type AudioReencodeCodec,
+	parseAudioReencode,
+	parseReencode,
+	type ReencodeCodec,
+} from "./reencode";
 import { ShellWordsError, splitShellWords } from "./shell-words";
 
 export type QueryKey =
@@ -9,7 +14,8 @@ export type QueryKey =
 	| "ffmpeg"
 	| "args"
 	| "playlist"
-	| "reencode";
+	| "reencode"
+	| "audioReencode";
 
 interface KeyDef {
 	names: readonly string[];
@@ -29,6 +35,11 @@ const KEYS: readonly KeyDef[] = [
 		key: "reencode",
 		takesValue: "optional",
 	},
+	{
+		names: ["-ea", "--audio-encode", "--audio-reencode"],
+		key: "audioReencode",
+		takesValue: "optional",
+	},
 ];
 
 export const ALL_KEYS: readonly QueryKey[] = KEYS.map((k) => k.key);
@@ -43,6 +54,8 @@ export interface ParsedQuery {
 	playlist: boolean;
 	/** true: re-encode with the configured codec; false: "-e off". */
 	reencode?: ReencodeCodec | boolean;
+	/** true: re-encode audio with the configured codec; false: "-ea off". */
+	audioReencode?: AudioReencodeCodec | boolean;
 }
 
 export class QueryError extends Error {}
@@ -118,8 +131,10 @@ export function parseQuery(
 		if (def.takesValue === "optional") {
 			// "-e prores" takes the next word only when it names a codec, so
 			// "-e https://..." still treats the URL as the URL.
+			const parse =
+				def.key === "audioReencode" ? parseAudioReencode : parseReencode;
 			if (inline !== undefined) value = inline;
-			else if (parseReencode(words[i + 1]) !== undefined) value = words[++i];
+			else if (parse(words[i + 1]) !== undefined) value = words[++i];
 		} else if (def.takesValue) {
 			value = inline ?? words[++i];
 			if (value === undefined || value === "")
@@ -173,6 +188,19 @@ export function parseQuery(
 						`Unknown codec "${value}" (use e.g. h264, h265, av1, prores, dnxhr, h264-nvenc, h264-vaapi or off)`,
 					);
 				result.reencode = reencode;
+				break;
+			}
+			case "audioReencode": {
+				if (value === undefined) {
+					result.audioReencode = true;
+					break;
+				}
+				const audioReencode = parseAudioReencode(value);
+				if (audioReencode === undefined)
+					throw new QueryError(
+						`Unknown audio codec "${value}" (use e.g. aac, opus, mp3, flac, pcm or off)`,
+					);
+				result.audioReencode = audioReencode;
 				break;
 			}
 		}

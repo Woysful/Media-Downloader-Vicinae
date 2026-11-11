@@ -32,10 +32,16 @@ import { cancelJob } from "./lib/jobs";
 import { buildPlan, type DownloadKind, type DownloadRequest } from "./lib/plan";
 import { normalizeUrl } from "./lib/query";
 import {
+	AUDIO_CODEC_PRESETS,
+	AUDIO_REENCODE_CODECS,
+	type AudioReencodeCodec,
+	asAudioReencodeCodec,
 	asReencodeCodec,
 	CODEC_PRESETS,
 	REENCODE_CODECS,
 	type ReencodeCodec,
+	resolveAudioReencodeCodec,
+	resolveReencodeCodec,
 } from "./lib/reencode";
 import { splitShellWords } from "./lib/shell-words";
 import { describeProgress, isSuccess, type JobState } from "./lib/status";
@@ -84,8 +90,14 @@ const CODEC_GROUPS: { title: string; codecs: ReencodeCodec[] }[] = [
 
 function reencodeLabel(value: ReencodeCodec | false): string {
 	return value === false
-		? "Off (keep original streams)"
+		? "No re-encode (keep original streams)"
 		: CODEC_PRESETS[value].title;
+}
+
+function audioReencodeLabel(value: AudioReencodeCodec | false): string {
+	return value === false
+		? "No re-encode (keep original audio)"
+		: AUDIO_CODEC_PRESETS[value].title;
 }
 
 function qualityLabel(quality: Quality): string {
@@ -107,6 +119,7 @@ export default function DownloadMedia() {
 	const [container, setContainer] = useState(DEFAULT);
 	const [audioFormat, setAudioFormat] = useState(DEFAULT);
 	const [reencode, setReencode] = useState(DEFAULT);
+	const [audioReencode, setAudioReencode] = useState(DEFAULT);
 	const [playlist, setPlaylist] = useState(false);
 	const [selector, setSelector] = useState("");
 	const [ffmpegArgs, setFfmpegArgs] = useState("");
@@ -153,6 +166,12 @@ export default function DownloadMedia() {
 				: reencode === OFF
 					? false
 					: asReencodeCodec(reencode),
+		audioReencode:
+			!isVideo || audioReencode === DEFAULT
+				? undefined
+				: audioReencode === OFF
+					? false
+					: asAudioReencodeCodec(audioReencode),
 		selector: customizable && selector.trim() ? selector.trim() : undefined,
 		ffmpegArgs:
 			customizable && ffmpegArgs.trim() ? ffmpegArgs.trim() : undefined,
@@ -165,19 +184,26 @@ export default function DownloadMedia() {
 		return findRule(config.rules, url.trim());
 	}, [config, url]);
 
+	const defaultReencode: ReencodeCodec | false =
+		resolveReencodeCodec(
+			undefined,
+			rule?.settings.reencode,
+			settings.reencodeCodec,
+		) ?? false;
+	const defaultAudioReencode: AudioReencodeCodec | false =
+		resolveAudioReencodeCodec(
+			undefined,
+			rule?.settings.audioReencode,
+			settings.reencodeAudioCodec,
+		) ?? false;
+
 	const defaults = {
 		quality: rule?.settings.quality ?? settings.quality,
 		container: rule?.settings.container ?? settings.videoContainer,
 		audioFormat: rule?.settings.audioFormat ?? settings.audioFormat,
-		reencode: resolveDefaultReencode(),
+		reencode: defaultReencode,
+		audioReencode: defaultAudioReencode,
 	};
-
-	function resolveDefaultReencode(): ReencodeCodec | false {
-		const fromRule = rule?.settings.reencode;
-		if (typeof fromRule === "string") return fromRule;
-		const enabled = fromRule ?? settings.reencodeAlways;
-		return enabled ? settings.reencodeCodec : false;
-	}
 
 	const preview = useMemo(() => {
 		try {
@@ -198,6 +224,9 @@ export default function DownloadMedia() {
 				lines.push(
 					`Re-encode: ${summary.reencode ? summary.reencode.title : "off"}`,
 				);
+				lines.push(
+					`Audio re-encode: ${summary.audioReencode ? summary.audioReencode.title : "off"}`,
+				);
 			}
 			if (summary.audioFormat)
 				lines.push(`Audio format: ${summary.audioFormat}`);
@@ -217,6 +246,7 @@ export default function DownloadMedia() {
 		container,
 		audioFormat,
 		reencode,
+		audioReencode,
 		playlist,
 		selector,
 		ffmpegArgs,
@@ -457,6 +487,28 @@ export default function DownloadMedia() {
 								/>
 							))}
 						</Form.Dropdown.Section>
+					))}
+				</Form.Dropdown>
+			)}
+			{isVideo && (
+				<Form.Dropdown
+					id="audioReencode"
+					title="Audio re-encode"
+					value={audioReencode}
+					onChange={setAudioReencode}
+					info="Re-encodes the audio track of the video file. With video re-encoding off, the video stream is copied and the container is kept."
+				>
+					<Form.Dropdown.Item
+						value={DEFAULT}
+						title={`Default – ${audioReencodeLabel(defaults.audioReencode)}`}
+					/>
+					<Form.Dropdown.Item value={OFF} title={audioReencodeLabel(false)} />
+					{AUDIO_REENCODE_CODECS.map((codec) => (
+						<Form.Dropdown.Item
+							key={codec}
+							value={codec}
+							title={AUDIO_CODEC_PRESETS[codec].title}
+						/>
 					))}
 				</Form.Dropdown>
 			)}

@@ -56,6 +56,25 @@ test("reencode accepts on/off and codec names", () => {
 	assert.ok(warnings.some((w) => /Line 5: invalid reencode "h266"/.test(w)));
 });
 
+test("audio-reencode accepts on/off and audio codec names", () => {
+	const { rules, warnings } = parseDomainConfig(
+		[
+			'a.com: audio-reencode="on"',
+			'b.com: audio-reencode="off"',
+			'c.com: audio-reencode="Opus"',
+			'd.com: audio-reencode="pcm_s16le"',
+			'e.com: audio-reencode="vorbis"',
+		].join("\n"),
+	);
+	assert.deepEqual(
+		rules.map((r) => r.settings.audioReencode),
+		[true, false, "opus", "pcm"],
+	);
+	assert.ok(
+		warnings.some((w) => /Line 5: invalid audio-reencode "vorbis"/.test(w)),
+	);
+});
+
 test("matches subdomains and prefers the most specific rule", () => {
 	const { rules } = parseDomainConfig(CONFIG);
 	assert.equal(findRule(rules, "https://www.youtube.com/watch?v=1")?.line, 3);
@@ -78,7 +97,7 @@ test("default config has only commented examples and parses cleanly", () => {
 		.join("\n");
 	const examples = parseDomainConfig(uncommented);
 	assert.deepEqual(examples.warnings, []);
-	assert.equal(examples.rules.length, 6);
+	assert.equal(examples.rules.length, 7);
 });
 
 test("creates the config file once, including missing directories", () => {

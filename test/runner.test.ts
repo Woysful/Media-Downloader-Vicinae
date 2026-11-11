@@ -64,6 +64,7 @@ test("re-encode args force CFR, put device options before the input and user ove
 			input: ["-vaapi_device", "/dev/dri/renderD128"],
 			output: ["-c:v", "h264_vaapi", "-r", "50"],
 			ext: "mp4",
+			video: true,
 		},
 		"/out.mp4",
 	);
@@ -83,6 +84,30 @@ test("re-encode args force CFR, put device options before the input and user ove
 	]);
 	assert.ok(args.lastIndexOf("-r") > fpsIndex + 2, "user -r wins");
 	assert.equal(args.at(-1), "/out.mp4");
+});
+
+test("audio-only re-encode copies the video stream and skips frame-rate options", () => {
+	const args = runner.buildEncodeArgs(
+		{ path: "/in.mkv", duration: 10, fps: 30 },
+		{ avgFrameRate: 23.976, frameRate: 24, duration: 10 },
+		{
+			label: "AAC (256 kbps)",
+			input: [],
+			output: ["-c:v", "copy", "-c:a", "aac", "-b:a", "256k"],
+			ext: "mkv",
+			video: false,
+		},
+		"/out.mkv",
+	);
+	assert.ok(!args.includes("-fps_mode"));
+	assert.ok(!args.includes("-r"));
+	assert.deepEqual(args.slice(args.indexOf("-c:v"), args.indexOf("-c:v") + 4), [
+		"-c:v",
+		"copy",
+		"-c:a",
+		"aac",
+	]);
+	assert.equal(args.at(-1), "/out.mkv");
 });
 
 test("progress notification text follows the job state", () => {

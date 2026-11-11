@@ -14,11 +14,16 @@ import {
 } from "./constants";
 import type { DomainRule } from "./domain-config";
 import {
+	AUDIO_CODEC_PRESETS,
+	type AudioReencodeCodec,
 	CODEC_PRESETS,
 	type EncodeAttempt,
 	type EncoderSupport,
+	planAudioEncode,
 	planEncode,
 	type ReencodeCodec,
+	resolveAudioReencodeCodec,
+	resolveReencodeCodec,
 } from "./reencode";
 import type { Settings } from "./settings";
 import { ShellWordsError, splitShellWords } from "./shell-words";
@@ -35,6 +40,8 @@ export interface DownloadRequest {
 	extraArgs?: string[];
 	/** Codec, true (preference codec), false (off) or undefined (rule/preferences decide). */
 	reencode?: ReencodeCodec | boolean;
+	/** Audio codec for the video's audio track, false (off) or undefined (preferences decide). */
+	audioReencode?: AudioReencodeCodec | boolean;
 	playlist: boolean;
 }
 
@@ -54,6 +61,7 @@ export interface PlanSummary {
 	audioFormat?: AudioFormat;
 	quality: Quality;
 	reencode: { codec: ReencodeCodec; title: string; notice?: string } | null;
+	audioReencode: { codec: AudioReencodeCodec; title: string } | null;
 	playlist: boolean;
 	rule?: { line: number; domains: string[] };
 }
@@ -157,6 +165,7 @@ export function buildPlan(
 		selector: "",
 		quality: "best",
 		reencode: null,
+		audioReencode: null,
 		playlist: req.playlist,
 		rule: rule ? { line: rule.line, domains: rule.domains } : undefined,
 	};
@@ -169,38 +178,79 @@ export function buildPlan(
 			);
 			const quality = req.quality ?? r.quality ?? settings.quality;
 			const ffmpeg = req.ffmpegArgs ?? r.ffmpegArgs;
-			const reencode = req.reencode ?? r.reencode ?? settings.reencodeAlways;
-			const codec =
-				typeof req.reencode === "string"
-					? req.reencode
-					: typeof r.reencode === "string"
-						? r.reencode
-						: settings.reencodeCodec;
+			const codec = resolveReencodeCodec(
+				req.reencode,
+				r.reencode,
+				settings.reencodeCodec,
+			);
+			const audioCodec = resolveAudioReencodeCodec(
+				req.audioReencode,
+				r.audioReencode,
+				settings.reencodeAudioCodec,
+			);
 
 			args.push("-f", selector);
 			// Format sorting (unlike filters in the selector) keeps the user's
 			// selector working: it only changes which matching format wins.
 			if (quality !== "best") args.push("-S", `res:${quality}`);
 
-			if (reencode !== false) {
+			if (audioCodec && env.encoders) {
+				const preset = AUDIO_CODEC_PRESETS[audioCodec];
+				if (!env.encoders.encoders.has(preset.encoder)) {
+					throw new PlanError(
+						`Your ffmpeg has no ${preset.encoder} encoder. Pick another audio re-encode codec.`,
+					);
+				}
+			}
+
+			if (codec || audioCodec) {
 				const extra = [
 					...words(settings.reencodeExtraArgs, "Re-encode arguments"),
 					...words(ffmpeg, "ffmpeg arguments"),
 				];
-				const { attempts, notice } = planEncode(codec, extra, env.encoders);
-				if (!attempts.length) {
-					const preset = CODEC_PRESETS[codec];
-					throw new PlanError(
-						preset.hardware === "vaapi" &&
-							env.encoders?.encoders.has(preset.encoder)
-							? "No VA-API device found (/dev/dri/renderD*)"
-							: `Your ffmpeg has no ${preset.encoder} encoder. Pick another re-encode codec.`,
+
+				if (codec) {
+					const { attempts, notice } = planEncode(
+						codec,
+						extra,
+						env.encoders,
+						audioCodec ? AUDIO_CODEC_PRESETS[audioCodec].args : undefined,
+					);
+					if (!attempts.length) {
+						const preset = CODEC_PRESETS[codec];
+						throw new PlanError(
+							preset.hardware === "vaapi" &&
+								env.encoders?.encoders.has(preset.encoder)
+								? "No VA-API device found (/dev/dri/renderD*)"
+								: `Your ffmpeg has no ${preset.encoder} encoder. Pick another re-encode codec.`,
+						);
+					}
+					encode = attempts;
+					summary.reencode = {
+						codec,
+						title: CODEC_PRESETS[codec].title,
+						notice,
+					};
+					// Matroska accepts any codec pair, so the merge never fails before the re-encode pass.
+					args.push("--merge-output-format", "mkv");
+				} else if (audioCodec) {
+					// The video stream is copied, so keep the requested container.
+					// The audio pass runs after yt-dlp has merged/remuxed the file.
+					encode = [planAudioEncode(audioCodec, extra, container)];
+					args.push(
+						"--merge-output-format",
+						container,
+						"--remux-video",
+						container,
 					);
 				}
-				encode = attempts;
-				summary.reencode = { codec, title: CODEC_PRESETS[codec].title, notice };
-				// Matroska accepts any codec pair, so the merge never fails before the re-encode pass.
-				args.push("--merge-output-format", "mkv");
+
+				if (audioCodec) {
+					summary.audioReencode = {
+						codec: audioCodec,
+						title: AUDIO_CODEC_PRESETS[audioCodec].title,
+					};
+				}
 			} else {
 				args.push(
 					"--merge-output-format",

@@ -13,6 +13,21 @@ export const REENCODE_CODECS = [
 ] as const;
 export type ReencodeCodec = (typeof REENCODE_CODECS)[number];
 
+/** Used by -e and reencode="on" when the preference is "No re-encode". */
+export const DEFAULT_REENCODE_CODEC: ReencodeCodec = "h264";
+
+export const AUDIO_REENCODE_CODECS = [
+	"aac",
+	"opus",
+	"mp3",
+	"flac",
+	"pcm",
+] as const;
+export type AudioReencodeCodec = (typeof AUDIO_REENCODE_CODECS)[number];
+
+/** Used by audio-reencode="on" when the preference is "No re-encode". */
+export const DEFAULT_AUDIO_REENCODE_CODEC: AudioReencodeCodec = "aac";
+
 export type Hardware = "nvenc" | "vaapi";
 
 export interface CodecPreset {
@@ -33,6 +48,41 @@ const PCM = ["-c:a", "pcm_s16le"] as const;
 // Apple players and Final Cut only accept HEVC in MP4 with the hvc1 tag.
 const HVC1 = ["-tag:v", "hvc1"] as const;
 const VAAPI_UPLOAD = ["-vf", "format=nv12,hwupload"] as const;
+
+export interface AudioCodecPreset {
+	title: string;
+	encoder: string;
+	args: readonly string[];
+}
+
+export const AUDIO_CODEC_PRESETS: Record<AudioReencodeCodec, AudioCodecPreset> =
+	{
+		aac: {
+			title: "AAC (256 kbps)",
+			encoder: "aac",
+			args: AAC,
+		},
+		opus: {
+			title: "Opus (192 kbps)",
+			encoder: "libopus",
+			args: ["-c:a", "libopus", "-b:a", "192k"],
+		},
+		mp3: {
+			title: "MP3 (256 kbps)",
+			encoder: "libmp3lame",
+			args: ["-c:a", "libmp3lame", "-b:a", "256k"],
+		},
+		flac: {
+			title: "FLAC (lossless)",
+			encoder: "flac",
+			args: ["-c:a", "flac"],
+		},
+		pcm: {
+			title: "PCM (uncompressed, 16-bit)",
+			encoder: "pcm_s16le",
+			args: PCM,
+		},
+	};
 
 export const CODEC_PRESETS: Record<ReencodeCodec, CodecPreset> = {
 	h264: {
@@ -255,6 +305,19 @@ const ALIASES: Record<string, ReencodeCodec> = {
 	"hevc-vaapi": "h265-vaapi",
 };
 
+const AUDIO_ALIASES: Record<string, AudioReencodeCodec> = {
+	aac: "aac",
+	m4a: "aac",
+	opus: "opus",
+	libopus: "opus",
+	mp3: "mp3",
+	libmp3lame: "mp3",
+	flac: "flac",
+	pcm: "pcm",
+	wav: "pcm",
+	pcm_s16le: "pcm",
+};
+
 export function asReencodeCodec(
 	value: string | undefined,
 ): ReencodeCodec | undefined {
@@ -263,6 +326,16 @@ export function asReencodeCodec(
 	if ((REENCODE_CODECS as readonly string[]).includes(v))
 		return v as ReencodeCodec;
 	return ALIASES[v] ?? ALIASES[v.replace(/-/g, "_")];
+}
+
+export function asAudioReencodeCodec(
+	value: string | undefined,
+): AudioReencodeCodec | undefined {
+	const v = value?.trim().toLowerCase().replace(/_/g, "-");
+	if (!v) return undefined;
+	if ((AUDIO_REENCODE_CODECS as readonly string[]).includes(v))
+		return v as AudioReencodeCodec;
+	return AUDIO_ALIASES[v] ?? AUDIO_ALIASES[v.replace(/-/g, "_")];
 }
 
 const OFF = ["off", "no", "false", "none", "original"];
@@ -282,13 +355,66 @@ export function parseReencode(
 	return asReencodeCodec(v);
 }
 
+/** Same as parseReencode, for audio track codecs. */
+export function parseAudioReencode(
+	value: string | undefined,
+): AudioReencodeCodec | boolean | undefined {
+	const v = value?.trim().toLowerCase();
+	if (!v) return undefined;
+	if (OFF.includes(v)) return false;
+	if (ON.includes(v)) return true;
+	return asAudioReencodeCodec(v);
+}
+
+/**
+ * Resolves the effective video re-encode from query, domain rule and
+ * preference. An explicit -e (true) still works when the preference says
+ * "No re-encode"; -e off always wins.
+ */
+export function resolveReencodeCodec(
+	requested: ReencodeCodec | boolean | undefined,
+	rule: ReencodeCodec | boolean | undefined,
+	preferred: ReencodeCodec | null,
+): ReencodeCodec | null {
+	if (typeof requested === "string") return requested;
+	if (requested === false) return null;
+	if (requested === true) {
+		const fromRule = typeof rule === "string" ? rule : null;
+		return fromRule ?? preferred ?? DEFAULT_REENCODE_CODEC;
+	}
+	if (typeof rule === "string") return rule;
+	if (rule === false) return null;
+	if (rule === true) return preferred ?? DEFAULT_REENCODE_CODEC;
+	return preferred;
+}
+
+export function resolveAudioReencodeCodec(
+	requested: AudioReencodeCodec | boolean | undefined,
+	rule: AudioReencodeCodec | boolean | undefined,
+	preferred: AudioReencodeCodec | null,
+): AudioReencodeCodec | null {
+	if (typeof requested === "string") return requested;
+	if (requested === false) return null;
+	if (requested === true) {
+		const fromRule = typeof rule === "string" ? rule : null;
+		return fromRule ?? preferred ?? DEFAULT_AUDIO_REENCODE_CODEC;
+	}
+	if (typeof rule === "string") return rule;
+	if (rule === false) return null;
+	if (rule === true) return preferred ?? DEFAULT_AUDIO_REENCODE_CODEC;
+	return preferred;
+}
+
 /** One ffmpeg invocation the runner may try; later attempts are fallbacks. */
 export interface EncodeAttempt {
-	codec: ReencodeCodec;
+	/** Video codec, or unset for an audio-only pass. */
+	codec?: ReencodeCodec;
 	label: string;
 	input: string[];
 	output: string[];
-	ext: "mp4" | "mov";
+	ext: string;
+	/** False when the video stream is copied (audio-only re-encode). */
+	video: boolean;
 }
 
 export interface EncoderSupport {
@@ -302,6 +428,7 @@ function attemptFor(
 	codec: ReencodeCodec,
 	extra: readonly string[],
 	vaapiDevice: string | undefined,
+	audioArgs: readonly string[] | undefined,
 ): EncodeAttempt {
 	const preset = CODEC_PRESETS[codec];
 	const input =
@@ -310,12 +437,44 @@ function attemptFor(
 			: [];
 	const output = [
 		...preset.video,
-		...preset.audio,
+		...(audioArgs ?? preset.audio),
 		"-movflags",
 		"+faststart",
 		...extra,
 	];
-	return { codec, label: preset.title, input, output, ext: preset.ext };
+	return {
+		codec,
+		label: preset.title,
+		input,
+		output,
+		ext: preset.ext,
+		video: true,
+	};
+}
+
+/**
+ * Builds a pass that copies the video stream and re-encodes only the audio
+ * track of a video file.
+ */
+export function planAudioEncode(
+	codec: AudioReencodeCodec,
+	extraArgs: readonly string[],
+	container: string,
+): EncodeAttempt {
+	const preset = AUDIO_CODEC_PRESETS[codec];
+	const output = ["-c:v", "copy", ...preset.args];
+	// +faststart only exists for the MP4/MOV muxers.
+	if (container === "mp4" || container === "mov") {
+		output.push("-movflags", "+faststart");
+	}
+	output.push(...extraArgs);
+	return {
+		label: preset.title,
+		input: [],
+		output,
+		ext: container,
+		video: false,
+	};
 }
 
 export interface EncodePlan {
@@ -326,12 +485,14 @@ export interface EncodePlan {
 
 /**
  * Builds the attempts for a codec. With `support`, encoders missing from
- * ffmpeg (or VA-API without a render node) are skipped up front.
+ * ffmpeg (or VA-API without a render node) are skipped up front. `audioArgs`
+ * replaces the codec preset's default audio encoding.
  */
 export function planEncode(
 	codec: ReencodeCodec,
 	extraArgs: readonly string[],
 	support?: EncoderSupport,
+	audioArgs?: readonly string[],
 ): EncodePlan {
 	const chain: ReencodeCodec[] = [codec];
 	const fallback = CODEC_PRESETS[codec].fallback;
@@ -346,7 +507,7 @@ export function planEncode(
 
 	const available = chain.filter(usable);
 	const attempts = available.map((c) =>
-		attemptFor(c, extraArgs, support?.vaapiDevice),
+		attemptFor(c, extraArgs, support?.vaapiDevice, audioArgs),
 	);
 	const notice =
 		available[0] !== codec && attempts.length

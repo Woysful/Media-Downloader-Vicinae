@@ -271,11 +271,11 @@ export function isOutdated(version: string): boolean {
 	return (versionAgeDays(version) ?? 0) > OUTDATED_AFTER_DAYS;
 }
 
-/** Video encoders listed by `ffmpeg -encoders`. */
+/** Video and audio encoders listed by `ffmpeg -encoders`. */
 export function parseEncoderList(output: string): Set<string> {
 	const encoders = new Set<string>();
 	for (const line of output.split("\n")) {
-		const m = /^\s*V[A-Z.]{5}\s+(\S+)/.exec(line);
+		const m = /^\s*[VAS][A-Z.]{5}\s+(\S+)/.exec(line);
 		if (m) encoders.add(m[1]);
 	}
 	return encoders;

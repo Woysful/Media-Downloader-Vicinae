@@ -9,7 +9,12 @@ import {
 	type VideoContainer,
 } from "./constants";
 import { configHome } from "./paths";
-import { parseReencode, type ReencodeCodec } from "./reencode";
+import {
+	type AudioReencodeCodec,
+	parseAudioReencode,
+	parseReencode,
+	type ReencodeCodec,
+} from "./reencode";
 
 export const CONFIG_FILE_NAME = "domain-config.txt";
 
@@ -23,6 +28,8 @@ export interface RuleSettings {
 	extraArgs?: string;
 	/** true: re-encode with the preference codec; false: never re-encode. */
 	reencode?: ReencodeCodec | boolean;
+	/** true: use the preference audio codec; false: keep the original audio. */
+	audioReencode?: AudioReencodeCodec | boolean;
 }
 
 export interface DomainRule {
@@ -50,6 +57,8 @@ export const DEFAULT_CONFIG_TEXT = `# Media Downloader - per-domain settings
 #   reencode      re-encode for video editors: on, off or a codec (h264, h265, av1,
 #                 prores, dnxhr, h264-nvenc, h265-nvenc, av1-nvenc, h264-vaapi,
 #                 h265-vaapi, av1-vaapi). "on" uses the codec from the preferences
+#   audio-reencode  re-encode the audio track of a video: on, off or a codec
+#                 (aac, opus, mp3, flac, pcm)
 #   audio-format  audio format for the Audio command: m4a, mp3, opus, ogg, flac, wav
 #   audio-ffmpeg  extra ffmpeg arguments used when extracting audio
 #   args          any extra yt-dlp arguments, e.g. "--cookies-from-browser firefox"
@@ -62,6 +71,7 @@ export const DEFAULT_CONFIG_TEXT = `# Media Downloader - per-domain settings
 # youtube.com, youtu.be: quality="1080" format="mp4"
 # instagram.com: reencode="on"
 # twitch.tv: reencode="prores"
+# tiktok.com: audio-reencode="aac"
 # twitter.com, x.com: format="mp4"
 # vimeo.com: yt-dlp="bv*+ba/b" args="--cookies-from-browser firefox"
 # soundcloud.com: audio-format="mp3"
@@ -76,6 +86,7 @@ const KEY_MAP: Record<string, keyof RuleSettings> = {
 	quality: "quality",
 	args: "extraArgs",
 	reencode: "reencode",
+	"audio-reencode": "audioReencode",
 	// Pre-2.0 name of the setting.
 	compat: "reencode",
 };
@@ -212,6 +223,19 @@ function applySetting(
 			if (reencode === undefined)
 				return `invalid reencode "${value}" (on, off or a codec such as h264, prores, h264-nvenc)`;
 			settings.reencode = reencode;
+			return;
+		}
+		case "audioReencode": {
+			const v = value.trim().toLowerCase();
+			const audio =
+				v === "reencode"
+					? true
+					: v === "prefer"
+						? false
+						: parseAudioReencode(v);
+			if (audio === undefined)
+				return `invalid audio-reencode "${value}" (on, off or a codec such as aac, opus, mp3, flac, pcm)`;
+			settings.audioReencode = audio;
 			return;
 		}
 		default:
