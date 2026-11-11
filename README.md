@@ -1,8 +1,8 @@
-# Media Downloader [Vicinae extension]
+# [<img src="assets/icon.png" width="4%" alt="">](https://github.com/Woysful/FFcut/releases) Media Downloader [Vicinae extension]
 
 A [yt-dlp](https://github.com/yt-dlp/yt-dlp) based downloader for [Vicinae](https://github.com/vicinaehq/vicinae): video and audio from YouTube and hundreds of other sites, with per-site settings.
 
-![](https://github.com/user-attachments/assets/260c6e74-7897-4577-9c46-68c82630c23d)
+![](assets/Preview.webp)
 
 > Originally a port of a plugin made for [Flow Launcher](https://github.com/woysful/media-downloader-FlowLauncher).
 
@@ -73,25 +73,6 @@ Without `-p` only one video is downloaded, even from a link like `watch?v=...&li
 
 With `-p` the files go into a folder named after the playlist: `Playlist Title/001 - Video Title.mp4`. Both templates can be changed in the preferences.
 
-### Video editors and re-encoding
-
-Downloaded videos often stutter or drop frames in editors (DaVinci Resolve, Premiere, Kdenlive, ...). The usual reasons are AV1/VP9 streams, MKV's millisecond timestamps and a variable frame rate in the source. Remuxing does not fix that; re-encoding does.
-
-With `-e` the download is re-encoded with ffmpeg into a file with a constant frame rate (variable averages are snapped to 23.976/24/25/29.97/30/50/59.94/60). `-e` alone uses the **Re-encode Codec** preference (H.264 on the CPU by default); `-e prores`, `-e h265-nvenc`, ... pick a codec for this download, `-e off` disables a domain rule.
-
-| Codec | Name for `-e` / `reencode=` | Container, audio | Notes |
-|:--|:--|:--|:--|
-| H.264 (x264) | `h264` | MP4, AAC | Default. Plays everywhere, every editor imports it |
-| H.265 / HEVC (x265) | `h265` | MP4, AAC | Smaller files, slower to encode and edit |
-| AV1 (SVT-AV1) | `av1` | MP4, AAC | Smallest files, weakest editor support |
-| ProRes 422 HQ | `prores` | MOV, PCM | Editing codec: smooth scrubbing, large files |
-| DNxHR HQ | `dnxhr` | MOV, PCM | Editing codec, works in the free DaVinci Resolve on Linux |
-| NVIDIA NVENC | `h264-nvenc`, `h265-nvenc`, `av1-nvenc` | MP4, AAC | AV1 needs an RTX 40 series card or newer |
-| AMD / Intel VA-API | `h264-vaapi`, `h265-vaapi`, `av1-vaapi` | MP4, AAC | Uses the first `/dev/dri/renderD*` device |
-
-GPU encoders fall back to the matching CPU encoder when ffmpeg was built without them or when they fail (no driver, unsupported card). The status then says which encoder was actually used. **Re-encode Extra Arguments** and `-ff` are appended to the preset, so `-ff '-crf 16'` or `-ff '-preset slow'` override it.
-
-**Re-encode every video** turns re-encoding on for every `Video` download; `reencode="on"` or `reencode="prores"` in the domain config does it for one site.
 ## Preferences
 
 | Preference | Notes |
