@@ -3,7 +3,7 @@
   "name": "media-downloader",
   "title": "Media Downloader",
   "description": "Download video and audio from YouTube and hundreds of other sites with yt-dlp, with per-site settings",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "categories": [
     "Media"
   ],
