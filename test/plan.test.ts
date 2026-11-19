@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseDomainConfig } from "../src/lib/domain-config";
-import { buildPlan, type DownloadRequest } from "../src/lib/plan";
+import {
+	buildPlan,
+	type DownloadRequest,
+	PlanError,
+	thumbnailNeedsMutagen,
+} from "../src/lib/plan";
 import { normalizeSettings } from "../src/lib/settings";
 
 const settings = normalizeSettings({ downloadDirectory: "/tmp/dl" });
@@ -372,4 +377,189 @@ test("extra arguments from preferences, rule and query are appended in that orde
 		"https://example.com/v",
 	]);
 	assert.equal(argValue(args, "--cookies-from-browser"), "firefox");
+});
+
+const stubZen = {
+	...env,
+	resolveCookieSpec: (spec: string) =>
+		spec === "zen" ? "firefox:/home/u/.zen/abc.Default" : spec,
+};
+
+test("cookies: off by default, preferences are applied, Zen becomes a Firefox profile", () => {
+	assert.ok(
+		!buildPlan(req(), settings, undefined, env).args.includes(
+			"--cookies-from-browser",
+		),
+	);
+
+	const withPref = normalizeSettings({
+		downloadDirectory: "/tmp/dl",
+		cookiesFromBrowser: "firefox",
+	});
+	assert.equal(
+		argValue(
+			buildPlan(req(), withPref, undefined, env).args,
+			"--cookies-from-browser",
+		),
+		"firefox",
+	);
+
+	const zenPref = normalizeSettings({
+		downloadDirectory: "/tmp/dl",
+		cookiesFromBrowser: "zen",
+	});
+	const plan = buildPlan(req(), zenPref, undefined, stubZen);
+	assert.equal(
+		argValue(plan.args, "--cookies-from-browser"),
+		"firefox:/home/u/.zen/abc.Default",
+	);
+	assert.equal(plan.summary.cookies, "zen");
+});
+
+test("cookies: -c enables them for one download even when the preference is off", () => {
+	const plan = buildPlan(req({ cookies: "zen" }), settings, undefined, stubZen);
+	assert.equal(
+		argValue(plan.args, "--cookies-from-browser"),
+		"firefox:/home/u/.zen/abc.Default",
+	);
+	for (const kind of ["video", "audio", "video-best", "audio-best"] as const) {
+		const { args } = buildPlan(
+			req({ kind, cookies: "firefox" }),
+			settings,
+			undefined,
+			env,
+		);
+		assert.equal(argValue(args, "--cookies-from-browser"), "firefox", kind);
+	}
+});
+
+test("cookies: priority is keys > domain rule > preferences, and -c off disables", () => {
+	const pref = normalizeSettings({
+		downloadDirectory: "/tmp/dl",
+		cookiesFromBrowser: "firefox",
+	});
+	const rule = parseDomainConfig('example.com: cookies="chrome"').rules[0];
+	const of = (r: Partial<DownloadRequest>, rl = rule) =>
+		argValue(buildPlan(req(r), pref, rl, env).args, "--cookies-from-browser");
+	assert.equal(of({}), "chrome");
+	assert.equal(of({ cookies: "brave" }), "brave");
+	assert.equal(of({ cookies: false }), undefined);
+	assert.equal(
+		of({}, parseDomainConfig('example.com: cookies="off"').rules[0]),
+		undefined,
+	);
+	assert.equal(
+		of(
+			{ cookies: true },
+			parseDomainConfig('example.com: cookies="on"').rules[0],
+		),
+		"firefox",
+	);
+});
+
+test("cookies: a bare -c without any configured browser is a settings error", () => {
+	assert.throws(
+		() => buildPlan(req({ cookies: true }), settings, undefined, env),
+		(e: Error) => e instanceof PlanError && /-c firefox/.test(e.message),
+	);
+	// A missing Zen profile is reported as a plan error, not a crash.
+	assert.throws(
+		() =>
+			buildPlan(req({ cookies: "zen" }), settings, undefined, {
+				...env,
+				resolveCookieSpec: () => {
+					throw new (require("../src/lib/cookies").CookieError)(
+						"Could not find a Zen profile",
+					);
+				},
+			}),
+		(e: Error) => e instanceof PlanError && /Zen profile/.test(e.message),
+	);
+});
+
+test("extra yt-dlp arguments still override the cookie browser", () => {
+	const { args } = buildPlan(
+		req({
+			cookies: "firefox",
+			extraArgs: ["--cookies-from-browser", "chrome"],
+		}),
+		settings,
+		undefined,
+		env,
+	);
+	assert.equal(valuesOf(args, "--cookies-from-browser").at(-1), "chrome");
+});
+
+test("settings accept Zen and ignore unknown browsers", () => {
+	assert.equal(
+		normalizeSettings({ cookiesFromBrowser: "zen" }).cookiesFromBrowser,
+		"zen",
+	);
+	assert.equal(
+		normalizeSettings({ cookiesFromBrowser: "ZEN" }).cookiesFromBrowser,
+		"zen",
+	);
+	assert.equal(
+		normalizeSettings({ cookiesFromBrowser: "none" }).cookiesFromBrowser,
+		undefined,
+	);
+	assert.equal(
+		normalizeSettings({ cookiesFromBrowser: "netscape" }).cookiesFromBrowser,
+		undefined,
+	);
+});
+
+test("thumbnails into opus/ogg/flac are flagged as needing mutagen", () => {
+	const embed = normalizeSettings({
+		downloadDirectory: "/tmp/dl",
+		embedThumbnail: true,
+	});
+	const need = (audio: string, s = embed) =>
+		thumbnailNeedsMutagen(
+			buildPlan(req({ kind: "audio", container: audio }), s, undefined, env),
+		);
+	assert.equal(need("opus"), true);
+	assert.equal(need("ogg"), true);
+	assert.equal(need("flac"), true);
+	// mp3 goes through ffmpeg; m4a falls back to AtomicParsley/ffmpeg
+	assert.equal(need("mp3"), false);
+	assert.equal(need("m4a"), false);
+	// no thumbnail requested, nothing to check
+	assert.equal(need("opus", settings), false);
+	assert.equal(
+		thumbnailNeedsMutagen(
+			buildPlan(
+				req({ kind: "video", container: "mp4" }),
+				embed,
+				undefined,
+				env,
+			),
+		),
+		false,
+	);
+});
+
+test("the plan names the Zen profile the cookies come from", () => {
+	const plan = buildPlan(req({ cookies: "zen" }), settings, undefined, {
+		...env,
+		resolveCookieSpec: () => "firefox:/home/u/.zen/abc.Default (release)::Work",
+	});
+	assert.equal(
+		plan.summary.cookiesProfile,
+		"/home/u/.zen/abc.Default (release)",
+	);
+	// Nothing to show when the browser is passed through unchanged.
+	assert.equal(
+		buildPlan(req({ cookies: "firefox" }), settings, undefined, env).summary
+			.cookiesProfile,
+		undefined,
+	);
+});
+
+test("yt-dlp stays chatty: --print would silence its cookie and login notes", () => {
+	// Without --no-quiet the runner never sees "Extracted N cookies" or the
+	// "age-restricted … without authentication" line it uses to explain failures.
+	const { args } = buildPlan(req(), settings, undefined, env);
+	assert.ok(args.includes("--print"));
+	assert.ok(args.includes("--no-quiet"));
 });

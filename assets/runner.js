@@ -28,7 +28,7 @@ const NOTIFY_INTERVAL_MS = 1500;
 /**
  * @typedef {{ path: string, duration: number | null, fps: number | null }} FileEntry
  * @typedef {{ index: number, count: number | null }} PlaylistItem
- * @typedef {{ codec?: string, label: string, input: string[], output: string[], ext: string, video: boolean }} EncodeAttempt
+ * @typedef {{ codec?: string, label: string, input: string[], output: string[], ext: string, video: boolean, audioMatch?: string[], outputAudioCopy?: string[] }} EncodeAttempt
  * @typedef {{
  *   status: "starting" | "downloading" | "processing" | "encoding" | "completed" | "partial" | "failed" | "cancelled",
  *   stage: string | null,
@@ -44,6 +44,8 @@ const NOTIFY_INTERVAL_MS = 1500;
  *   files: FileEntry[],
  *   error: string | null,
  *   warning: string | null,
+ *   cookieCount: number | null,
+ *   login: "missing" | "rotated" | "age-verification" | null,
  *   notificationOwned: boolean,
  *   exitCode: number | null,
  *   pid: number,
@@ -101,6 +103,8 @@ function createState(pid, now) {
 		files: [],
 		error: null,
 		warning: null,
+		cookieCount: null,
+		login: null,
 		notificationOwned: false,
 		exitCode: null,
 		pid,
@@ -122,6 +126,25 @@ function cleanError(line) {
 }
 
 /**
+ * yt-dlp's own verdict on the YouTube login, taken from its output. It tells
+ * apart the three reasons why cookies do not help with an age-restricted video.
+ * @param {string} line
+ * @returns {"missing" | "rotated" | "age-verification" | null}
+ */
+function youtubeLogin(line) {
+	if (/cookies are no longer valid/i.test(line)) return "rotated";
+	if (
+		/age-restricted; some formats may be missing without authentication/i.test(
+			line,
+		)
+	)
+		return "missing";
+	if (/requiring account age-verification/i.test(line))
+		return "age-verification";
+	return null;
+}
+
+/**
  * Applies one line of yt-dlp output to the state.
  * @param {JobState} state
  * @param {string} rawLine
@@ -136,6 +159,19 @@ function applyLine(state, rawLine) {
 		return true;
 	}
 
+	const extracted = /^(?:\[\w+\]\s+)?Extracted (\d+) cookies? from /.exec(line);
+	if (extracted) {
+		state.cookieCount = Number(extracted[1]);
+		return true;
+	}
+
+	const login = youtubeLogin(line);
+	if (login) {
+		// Rotation is the root cause when yt-dlp reports both.
+		if (state.login !== "rotated") state.login = login;
+		return true;
+	}
+
 	if (!line.startsWith(PREFIX)) return false;
 
 	const parts = line.slice(PREFIX.length).split("|");
@@ -147,7 +183,8 @@ function applyLine(state, rawLine) {
 		const formatId = parts[3] ?? "";
 		state.title = parts.slice(4).join("|") || null;
 		state.item = index !== null ? { index, count } : null;
-		state.streamCount = formatId && formatId !== "NA" ? formatId.split("+").length : 1;
+		state.streamCount =
+			formatId && formatId !== "NA" ? formatId.split("+").length : 1;
 		state.status = "downloading";
 		state.stage = null;
 		state.stream = null;
@@ -160,8 +197,19 @@ function applyLine(state, rawLine) {
 	}
 
 	if (kind === "dl") {
-		const [, status, downloadedRaw, totalRaw, estimateRaw, speedRaw, etaRaw, fragIndexRaw, fragCountRaw, vcodec, acodec] =
-			parts;
+		const [
+			,
+			status,
+			downloadedRaw,
+			totalRaw,
+			estimateRaw,
+			speedRaw,
+			etaRaw,
+			fragIndexRaw,
+			fragCountRaw,
+			vcodec,
+			acodec,
+		] = parts;
 		state.status = "downloading";
 		state.stage = null;
 		if (vcodec === "none") state.stream = "audio";
@@ -182,11 +230,13 @@ function applyLine(state, rawLine) {
 
 		let percent = null;
 		if (downloaded !== null && total) percent = (downloaded / total) * 100;
-		else if (fragIndex !== null && fragCount) percent = (fragIndex / fragCount) * 100;
+		else if (fragIndex !== null && fragCount)
+			percent = (fragIndex / fragCount) * 100;
 
 		state.downloaded = downloaded;
 		state.total = total;
-		state.percent = percent === null ? null : Math.max(0, Math.min(100, percent));
+		state.percent =
+			percent === null ? null : Math.max(0, Math.min(100, percent));
 		state.speed = toNumber(speedRaw);
 		state.eta = toNumber(etaRaw);
 		return true;
@@ -242,7 +292,8 @@ const STANDARD_RATES = [
  */
 function parseRate(value) {
 	if (value === null || value === undefined) return null;
-	if (typeof value === "number") return Number.isFinite(value) && value > 0 ? value : null;
+	if (typeof value === "number")
+		return Number.isFinite(value) && value > 0 ? value : null;
 	const [num, den] = value.split("/").map(Number);
 	const rate = den ? num / den : num;
 	return Number.isFinite(rate) && rate > 0 ? rate : null;
@@ -258,7 +309,8 @@ function snapFrameRate(rate) {
 	if (!rate || rate < 1 || rate > 240) return null;
 	let best = STANDARD_RATES[0];
 	for (const candidate of STANDARD_RATES) {
-		if (Math.abs(candidate.value - rate) < Math.abs(best.value - rate)) best = candidate;
+		if (Math.abs(candidate.value - rate) < Math.abs(best.value - rate))
+			best = candidate;
 	}
 	if (Math.abs(best.value - rate) / best.value <= 0.02) return best.label;
 	return String(Math.round(rate * 1000) / 1000);
@@ -307,16 +359,28 @@ function buildEncodeArgs(file, probe, attempt, output) {
  */
 function describeOutcome(state) {
 	const names = state.files.map((f) => path.basename(f.path));
-	const body = names.length > 1 ? `${names.length} files` : (names[0] ?? state.title ?? "");
+	const body =
+		names.length > 1
+			? `${names.length} files`
+			: (names[0] ?? state.title ?? "");
 	switch (state.status) {
 		case "completed":
-			return { title: "Download complete", body: state.warning ? `${body} · ${state.warning}` : body };
+			return {
+				title: "Download complete",
+				body: state.warning ? `${body} · ${state.warning}` : body,
+			};
 		case "partial":
-			return { title: "Download finished with errors", body: state.error ?? body };
+			return {
+				title: "Download finished with errors",
+				body: state.error ?? body,
+			};
 		case "cancelled":
 			return { title: "Download cancelled", body: state.title ?? "" };
 		default:
-			return { title: "Download failed", body: state.error ?? state.title ?? "" };
+			return {
+				title: "Download failed",
+				body: state.error ?? state.title ?? "",
+			};
 	}
 }
 
@@ -356,26 +420,42 @@ function formatEta(seconds) {
  * @returns {{ title: string, body: string, percent: number | null } | null}
  */
 function progressText(state, playlist) {
-	const prefix = playlist && state.item ? `[${state.item.index}${state.item.count ? `/${state.item.count}` : ""}] ` : "";
+	const prefix =
+		playlist && state.item
+			? `[${state.item.index}${state.item.count ? `/${state.item.count}` : ""}] `
+			: "";
 	const body = state.title ?? "";
 	const parts = [];
 	switch (state.status) {
 		case "downloading":
-			parts.push(state.percent === null ? "Downloading…" : `Downloading ${state.percent.toFixed(0)}%`);
+			parts.push(
+				state.percent === null
+					? "Downloading…"
+					: `Downloading ${state.percent.toFixed(0)}%`,
+			);
 			if (state.speed) parts.push(`${formatBytes(state.speed)}/s`);
 			if (state.eta) parts.push(`ETA ${formatEta(state.eta)}`);
 			break;
 		case "processing":
-			parts.push(`${(state.stage && STAGE_LABELS[/** @type {keyof typeof STAGE_LABELS} */ (state.stage)]) || "Processing"}…`);
+			parts.push(
+				`${(state.stage && STAGE_LABELS[/** @type {keyof typeof STAGE_LABELS} */ (state.stage)]) || "Processing"}…`,
+			);
 			break;
 		case "encoding":
-			parts.push(state.percent === null ? "Re-encoding…" : `Re-encoding ${state.percent.toFixed(0)}%`);
+			parts.push(
+				state.percent === null
+					? "Re-encoding…"
+					: `Re-encoding ${state.percent.toFixed(0)}%`,
+			);
 			if (state.eta) parts.push(`ETA ${formatEta(state.eta)}`);
 			break;
 		default:
 			return null;
 	}
-	const percent = state.percent === null || state.status === "processing" ? null : Math.round(state.percent);
+	const percent =
+		state.percent === null || state.status === "processing"
+			? null
+			: Math.round(state.percent);
 	return { title: prefix + parts.join(" · "), body, percent };
 }
 
@@ -387,7 +467,10 @@ function progressText(state, playlist) {
  * @param {() => void} onOwned called once the notification exists
  */
 function createNotifier(job, state, onOwned) {
-	let broken = !job.progressNotification || process.platform === "darwin" || process.platform === "win32";
+	let broken =
+		!job.progressNotification ||
+		process.platform === "darwin" ||
+		process.platform === "win32";
 	/** @type {string | null} */
 	let id = null;
 	let lastKey = "";
@@ -398,7 +481,9 @@ function createNotifier(job, state, onOwned) {
 	/** @param {string[]} args */
 	const send = (args) =>
 		new Promise((resolve) => {
-			execFile("notify-send", args, { timeout: 5000 }, (error, stdout) => resolve(error ? null : String(stdout).trim()));
+			execFile("notify-send", args, { timeout: 5000 }, (error, stdout) =>
+				resolve(error ? null : String(stdout).trim()),
+			);
 		});
 
 	/**
@@ -539,7 +624,12 @@ function runProcess(bin, args, env, handlers, log) {
 		try {
 			child = spawn(bin, args, {
 				stdio: ["ignore", "pipe", "pipe"],
-				env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1", ...env },
+				env: {
+					...process.env,
+					PYTHONIOENCODING: "utf-8",
+					PYTHONUTF8: "1",
+					...env,
+				},
 			});
 		} catch (error) {
 			resolve({ code: null, error: /** @type {Error} */ (error) });
@@ -610,6 +700,70 @@ function probe(ffprobe, file) {
 }
 
 /**
+ * Codec names of every audio stream of a file.
+ * @param {string} ffprobe
+ * @param {string} file
+ * @returns {Promise<string[] | null>} null when the file could not be probed
+ */
+function probeAudio(ffprobe, file) {
+	return new Promise((resolve) => {
+		let out = "";
+		let child;
+		try {
+			child = spawn(
+				ffprobe,
+				[
+					"-v",
+					"error",
+					"-select_streams",
+					"a",
+					"-show_entries",
+					"stream=codec_name",
+					"-of",
+					"json",
+					file,
+				],
+				{ stdio: ["ignore", "pipe", "ignore"] },
+			);
+		} catch {
+			resolve(null);
+			return;
+		}
+		child.stdout?.setEncoding("utf8");
+		child.stdout?.on("data", (/** @type {string} */ chunk) => {
+			out += chunk;
+		});
+		child.on("error", () => resolve(null));
+		child.on("close", (code) => {
+			if (code !== 0) return resolve(null);
+			try {
+				const streams = JSON.parse(out).streams ?? [];
+				resolve(
+					streams.map(
+						(/** @type {{ codec_name?: string }} */ s) => s.codec_name ?? "",
+					),
+				);
+			} catch {
+				resolve(null);
+			}
+		});
+	});
+}
+
+/**
+ * Whether the audio is already what the pass would make of it, so encoding it
+ * again would only lose quality. Files without audio count as matching.
+ * @param {EncodeAttempt} attempt
+ * @param {string[] | null} codecs
+ * @returns {boolean}
+ */
+function audioAlreadyMatches(attempt, codecs) {
+	const match = attempt.audioMatch;
+	if (!match || !codecs) return false;
+	return codecs.every((codec) => match.includes(codec));
+}
+
+/**
  * @param {JobSpec} job
  * @param {JobState} state
  * @param {{ schedule: () => void, flush: () => void }} writer
@@ -624,26 +778,55 @@ async function reencodeFiles(job, state, writer, log) {
 	for (let i = 0; i < files.length; i++) {
 		if (cancelled) return false;
 		const file = files[i];
-		const info = reencode.ffprobe ? await probe(reencode.ffprobe, file.path) : null;
+		const info = reencode.ffprobe
+			? await probe(reencode.ffprobe, file.path)
+			: null;
 		const duration = info?.duration ?? file.duration;
 		const parsed = path.parse(file.path);
+
+		// Audio that already is in the wanted codec is not worth another lossy pass
+		// (a repeated download, or a source that comes as Opus/AAC to begin with).
+		const audioCodecs = reencode.ffprobe
+			? await probeAudio(reencode.ffprobe, file.path)
+			: null;
+		if (
+			!reencode.attempts[0].video &&
+			audioAlreadyMatches(reencode.attempts[0], audioCodecs)
+		) {
+			log.write(
+				`\n[runner] Audio is already ${audioCodecs?.join(", ") || "absent"}, no re-encode needed\n`,
+			);
+			continue;
+		}
 
 		state.status = "encoding";
 		state.stage = "Re-encode";
 		state.title = parsed.name;
-		state.item = files.length > 1 ? { index: i + 1, count: files.length } : state.item;
+		state.item =
+			files.length > 1 ? { index: i + 1, count: files.length } : state.item;
 
 		let encodedTo = null;
 		for (let a = 0; a < reencode.attempts.length && !encodedTo; a++) {
 			const attempt = reencode.attempts[a];
 			const next = reencode.attempts[a + 1];
-			const tmpOut = path.join(parsed.dir, `${parsed.name}.reencode-tmp.${attempt.ext}`);
+			const tmpOut = path.join(
+				parsed.dir,
+				`${parsed.name}.reencode-tmp.${attempt.ext}`,
+			);
 			const finalOut = path.join(parsed.dir, `${parsed.name}.${attempt.ext}`);
 
 			state.percent = 0;
 			state.speed = null;
 			state.eta = null;
 			writer.flush();
+			const copyAudio =
+				attempt.video &&
+				attempt.outputAudioCopy !== undefined &&
+				audioAlreadyMatches(attempt, audioCodecs);
+			if (copyAudio)
+				log.write(
+					`\n[runner] Audio is already ${audioCodecs?.join(", ")}, copying it\n`,
+				);
 			log.write(`\n[runner] Re-encoding with ${attempt.label}\n`);
 
 			/** @type {string[]} */
@@ -651,17 +834,30 @@ async function reencodeFiles(job, state, writer, log) {
 			const startedAt = Date.now();
 			const result = await runProcess(
 				reencode.ffmpeg,
-				buildEncodeArgs(file, info, attempt, tmpOut),
+				buildEncodeArgs(
+					file,
+					info,
+					copyAudio
+						? { ...attempt, output: attempt.outputAudioCopy ?? attempt.output }
+						: attempt,
+					tmpOut,
+				),
 				undefined,
 				{
 					stdout: (line) => {
 						const match = /^out_time_(?:us|ms)=(\d+)/.exec(line);
 						if (!match || !duration) return;
 						const seconds = Number(match[1]) / 1e6;
-						const percent = Math.max(0, Math.min(100, (seconds / duration) * 100));
+						const percent = Math.max(
+							0,
+							Math.min(100, (seconds / duration) * 100),
+						);
 						const elapsed = (Date.now() - startedAt) / 1000;
 						state.percent = percent;
-						state.eta = percent > 0 ? Math.round((elapsed * (100 - percent)) / percent) : null;
+						state.eta =
+							percent > 0
+								? Math.round((elapsed * (100 - percent)) / percent)
+								: null;
 						writer.schedule();
 					},
 					stderr: (line) => {
@@ -679,7 +875,10 @@ async function reencodeFiles(job, state, writer, log) {
 			fs.rmSync(tmpOut, { force: true });
 			if (cancelled) return false;
 
-			const reason = result.error?.message ?? errors.at(-1) ?? `ffmpeg exited with code ${result.code}`;
+			const reason =
+				result.error?.message ??
+				errors.at(-1) ??
+				`ffmpeg exited with code ${result.code}`;
 			if (!next) {
 				state.error = `Re-encoding failed: ${reason}`;
 				return false;
@@ -687,7 +886,9 @@ async function reencodeFiles(job, state, writer, log) {
 			// GPU encoders fail on missing drivers, unsupported resolutions or
 			// old hardware; the CPU encoder always works.
 			state.warning = `${attempt.label} failed, used ${next.label}`;
-			log.write(`[runner] ${attempt.label} failed (${reason}), trying ${next.label}\n`);
+			log.write(
+				`[runner] ${attempt.label} failed (${reason}), trying ${next.label}\n`,
+			);
 		}
 
 		if (!encodedTo) return false;
@@ -739,12 +940,17 @@ function fallbackFinish(job, state) {
 		}
 	}
 
-	if (job.openFolder && (state.status === "completed" || state.status === "partial")) {
+	if (
+		job.openFolder &&
+		(state.status === "completed" || state.status === "partial")
+	) {
 		const first = state.files[0]?.path;
 		if (process.platform === "darwin") {
 			spawnDetachedQuiet("open", first ? ["-R", first] : [job.downloadDir]);
 		} else {
-			spawnDetachedQuiet("xdg-open", [first ? path.dirname(first) : job.downloadDir]);
+			spawnDetachedQuiet("xdg-open", [
+				first ? path.dirname(first) : job.downloadDir,
+			]);
 		}
 	}
 }
@@ -764,10 +970,14 @@ async function waitForAck(ackPath, timeoutMs) {
 
 /** @param {string} jobDir */
 async function main(jobDir) {
-	const job = /** @type {JobSpec} */ (JSON.parse(fs.readFileSync(path.join(jobDir, "job.json"), "utf8")));
+	const job = /** @type {JobSpec} */ (
+		JSON.parse(fs.readFileSync(path.join(jobDir, "job.json"), "utf8"))
+	);
 	const state = createState(process.pid, Date.now());
 	const writer = createStateWriter(path.join(jobDir, "state.json"), state);
-	const log = fs.createWriteStream(path.join(jobDir, "output.log"), { flags: "a" });
+	const log = fs.createWriteStream(path.join(jobDir, "output.log"), {
+		flags: "a",
+	});
 	state.warning = job.notice ?? null;
 	const notifier = createNotifier(job, state, () => {
 		state.notificationOwned = true;
@@ -796,7 +1006,13 @@ async function main(jobDir) {
 		const onLine = (/** @type {string} */ line) => {
 			if (applyLine(state, line)) writer.schedule();
 		};
-		const result = await runProcess(job.ytdlp.bin, job.ytdlp.args, job.ytdlp.env, { stdout: onLine, stderr: onLine }, log);
+		const result = await runProcess(
+			job.ytdlp.bin,
+			job.ytdlp.args,
+			job.ytdlp.env,
+			{ stdout: onLine, stderr: onLine },
+			log,
+		);
 
 		if (cancelled) {
 			state.status = "cancelled";
@@ -805,7 +1021,10 @@ async function main(jobDir) {
 			state.error = `Could not start yt-dlp: ${result.error.message}`;
 		} else {
 			state.exitCode = result.code;
-			const encoded = state.files.length > 0 ? await reencodeFiles(job, state, writer, log) : true;
+			const encoded =
+				state.files.length > 0
+					? await reencodeFiles(job, state, writer, log)
+					: true;
 			if (cancelled) state.status = "cancelled";
 			else if (!encoded) state.status = "failed";
 			else if (result.code === 0) state.status = "completed";
@@ -817,7 +1036,8 @@ async function main(jobDir) {
 		}
 	} catch (error) {
 		state.status = cancelled ? "cancelled" : "failed";
-		state.error = state.error ?? String(error instanceof Error ? error.message : error);
+		state.error =
+			state.error ?? String(error instanceof Error ? error.message : error);
 	}
 
 	state.stage = null;
@@ -835,7 +1055,10 @@ async function main(jobDir) {
 
 	await new Promise((r) => log.end(r));
 
-	const acknowledged = await waitForAck(path.join(jobDir, "ack"), ACK_TIMEOUT_MS);
+	const acknowledged = await waitForAck(
+		path.join(jobDir, "ack"),
+		ACK_TIMEOUT_MS,
+	);
 	if (!acknowledged) fallbackFinish(job, state);
 }
 
@@ -846,7 +1069,9 @@ module.exports = {
 	createState,
 	describeOutcome,
 	parseRate,
+	probeAudio,
 	progressText,
+	reencodeFiles,
 	snapFrameRate,
 };
 

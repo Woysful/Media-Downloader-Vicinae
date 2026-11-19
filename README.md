@@ -13,12 +13,8 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) based downloader for [Vicinae](http
 - Download single video or whole playlist
 - Re-encoding Video or Audio stream after downloading the file
 - Per-domain settings file
-- yt-dlp is downloaded automatically when it is not installed, and kept up to date
-
-## Requirements
-
-- **ffmpeg** (and ffprobe, which ships with it): `sudo pacman -S ffmpeg`, `sudo apt install ffmpeg`, `brew install ffmpeg`, ...
-- **yt-dlp** is optional. If it is not on your `PATH`, the extension downloads the official build into its own data folder and runs `yt-dlp -U` at most once a day. A system yt-dlp is never touched; keep it updated yourself (old versions are the main cause of failed downloads).
+- yt-dlp and ffmpeg are downloaded automatically when they are not installed (ffmpeg: Linux x64/arm64), and the downloaded yt-dlp is kept up to date
+- Login cookies from your browser, including Zen: `-c zen`
 
 ## Installation
 
@@ -62,14 +58,26 @@ Type keys after the URL (or before it). Values with spaces must be quoted, with 
 | `-p` | `--playlist` | Download the whole playlist | `-p` |
 | `-e` | `--edit`, `--reencode` | Re-encode the video for editors with a constant frame rate. Optional codec, see below | `-e`, `-e prores`, `-e off` |
 | `-ea` | `--audio-encode`, `--audio-reencode` | Re-encode the audio track of a video. Optional codec, see below | `-ea`, `-ea pcm`, `-ea off` |
+| `-c` | `--cookies` | Use the login cookies of a browser for this download, see [Cookies](#cookies) | `-c firefox`, `-c zen`, `-c zen:Work`, `-c off` |
 
 Video re-encode codecs: `h264`, `h265`, `av1`, `prores`, `dnxhr`, `h264-nvenc`, `h265-nvenc`, `av1-nvenc`, `h264-vaapi`, `h265-vaapi`, `av1-vaapi`.
 Audio re-encode codecs: `aac`, `opus`, `mp3`, `flac`, `pcm`. Audio re-encoding copies the video stream and keeps the chosen container unless video re-encoding is also enabled.
 `-e` and `-ea` without a codec use H.264 and AAC when the preferences are set to No re-encode.
 
-`Video Best` and `Audio Best` accept `-p` and `-a`.
+Audio that is already in the chosen codec is not encoded again, since a second lossy pass only loses quality: YouTube's Opus audio with the Opus preset, a repeated download, an AAC source with AAC. With audio re-encoding alone the file is left untouched; together with video re-encoding the audio is copied. The check looks at every audio track with ffprobe and compares the codec only, so bitrate presets are not enforced. Giving your own audio arguments (`-ff '-b:a 96k'`, `-ar`, `-af`, ...) turns the shortcut off and always encodes.
+
+`Video Best` and `Audio Best` accept `-p`, `-a` and `-c`.
 
 > **Example:** `https://youtube.com/watch?v=... -q 1080 -f mp4 -ff '-c:a aac'`
+
+### Cookies
+
+Cookies let yt-dlp act as you: age-restricted, private and members-only videos, "Sign in to confirm you're not a bot".
+
+- `-c firefox` uses that browser for this download, even when cookies are off in the preferences. Supported: `firefox`, `zen`, `chrome`, `chromium`, `brave`, `edge`, `opera`, `vivaldi`, `safari`, `whale`.
+- `-c` without a browser uses the one from the domain rule or the **Cookies From Browser** preference.
+- `-c off` turns cookies off for this download.
+- A profile can be named like in yt-dlp: `-c chrome:'Profile 1'`, `-c firefox:/path/to/profile`.
 
 ### Playlists
 
@@ -86,7 +94,7 @@ With `-p` the files go into a folder named after the playlist: `Playlist Title/0
 | Video Re-encode, Audio Re-encode, Re-encode Extra Arguments | See above. No re-encode leaves that stream untouched by default |
 | Audio Format, Audio Quality | Defaults for `Audio` |
 | Embed metadata / thumbnail | Thumbnails are embedded only into containers that support cover art |
-| Cookies From Browser | For age-restricted, private and members-only videos |
+| Cookies From Browser | Browser to take login cookies from by default (Zen is supported). `-c` overrides it per download, `-c off` disables it |
 | Extra yt-dlp Arguments | Added to every download |
 | File Name Template, Playlist File Name Template | yt-dlp output templates |
 | Domain Config Directory | Empty means `~/.config/media-downloader/` |
@@ -109,7 +117,8 @@ instagram.com: reencode="on"
 twitch.tv: reencode="prores"
 tiktok.com: audio-reencode="aac"
 twitter.com, x.com: format="mp4"
-vimeo.com: yt-dlp="bv*+ba/b" args="--cookies-from-browser firefox"
+vimeo.com: yt-dlp="bv*+ba/b" cookies="firefox"
+youtube.com: quality="1080" cookies="zen"
 ```
 
 | Key | Meaning |
@@ -122,13 +131,16 @@ vimeo.com: yt-dlp="bv*+ba/b" args="--cookies-from-browser firefox"
 | `audio-reencode` | `on` (audio codec from the preferences), `off` or `aac`, `opus`, `mp3`, `flac`, `pcm` |
 | `audio-format` | Format for the `Audio` command |
 | `audio-ffmpeg` | ffmpeg arguments for audio extraction |
+| `cookies` | Browser for login cookies: `firefox`, `zen`, `zen:Work`, ... `on` uses the browser from the preferences, `off` never uses cookies for the domain |
 | `args` | Extra yt-dlp arguments |
 
-A domain also matches its subdomains, and the most specific rule wins, so `music.youtube.com` overrides `youtube.com`. Unknown keys and invalid values are reported in the Vicinae extension log and ignored. See [`domain-config-example.txt`](domain-config-example.txt) for more examples.
+A domain also matches its subdomains, and the most specific rule wins, so `music.youtube.com` overrides `youtube.com`. Only that one rule is used, so keep all keys for a site on one line. Unknown keys and invalid values are reported in the Vicinae extension log and ignored. See [`domain-config-example.txt`](domain-config-example.txt) for more examples.
 
 ## Troubleshooting
 
-- **HTTP Error 403, "Sign in to confirm", age-restricted videos:** update yt-dlp, or set **Cookies From Browser**.
+- **HTTP Error 403, "Sign in to confirm", age-restricted videos:** update yt-dlp, or use cookies: `-c firefox`, `-c zen`, or the **Cookies From Browser** preference.
+- **"could not find firefox cookies database" with Zen:** choose **Zen** (or `-c zen`), not Firefox. If Zen is installed in an unusual place, pass the profile folder: `-c zen:/path/to/profile`.
+- **"module mutagen was not found":** yt-dlp needs mutagen to embed a thumbnail into opus/ogg/flac. The extension switches to the standalone yt-dlp for such downloads by itself. If you set a custom **yt-dlp Executable**, it is left alone: the download works, the thumbnail is skipped and the result says so. Install mutagen for that yt-dlp (`python3 -m pip install mutagen`, or `sudo pacman -S python-mutagen`) or clear the preference.
 - **"Requested format is not available":** your `-yt` selector or the domain rule's `yt-dlp` value matches nothing on that site. Try without it.
 - **Container errors after changing `-f`:** remuxing only changes the container, so codecs must be supported by it (for example, VP9 in AVI is not). Use MP4/MKV, or `-e`.
 - **Re-encode is slow:** pick a GPU codec (`h264-nvenc`, `h264-vaapi`) or add `-ff '-preset fast'`. ProRes and DNxHR are fast to encode but produce very large files.

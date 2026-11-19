@@ -3,7 +3,7 @@
   "name": "media-downloader",
   "title": "Media Downloader",
   "description": "Download video and audio from YouTube and hundreds of other sites with yt-dlp, with per-site settings",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "categories": [
     "Media"
   ],
@@ -33,7 +33,7 @@
         {
           "name": "query",
           "type": "text",
-          "placeholder": "URL [-q 1080] [-f mp4] [-p] [-e prores] [-ea aac]",
+          "placeholder": "URL [-q 1080] [-f mp4] [-p] [-c firefox] [-e prores] [-ea aac]",
           "required": true
         }
       ]
@@ -55,7 +55,7 @@
         {
           "name": "query",
           "type": "text",
-          "placeholder": "URL [-f mp3] [-p]",
+          "placeholder": "URL [-f mp3] [-p] [-c firefox]",
           "required": true
         }
       ]
@@ -75,7 +75,7 @@
         {
           "name": "url",
           "type": "text",
-          "placeholder": "URL [-p]",
+          "placeholder": "URL [-p] [-c firefox]",
           "required": true
         }
       ]
@@ -96,7 +96,7 @@
         {
           "name": "url",
           "type": "text",
-          "placeholder": "URL [-p]",
+          "placeholder": "URL [-p] [-c firefox]",
           "required": true
         }
       ]
@@ -431,6 +431,10 @@
         {
           "title": "Firefox",
           "value": "firefox"
+        },
+        {
+          "title": "Zen",
+          "value": "zen"
         },
         {
           "title": "Chrome",

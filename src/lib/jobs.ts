@@ -147,6 +147,8 @@ function deadState(
 		files: previous?.files ?? [],
 		error: cancelled ? null : error,
 		warning: previous?.warning ?? null,
+		cookieCount: previous?.cookieCount ?? null,
+		login: previous?.login ?? null,
 		notificationOwned: previous?.notificationOwned ?? false,
 		exitCode: null,
 		pid: previous?.pid ?? 0,

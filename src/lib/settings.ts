@@ -2,7 +2,6 @@ import {
 	type AudioFormat,
 	asAudioFormat,
 	asVideoContainer,
-	COOKIE_BROWSERS,
 	DEFAULT_OUTPUT_TEMPLATE,
 	DEFAULT_PLAYLIST_TEMPLATE,
 	DEFAULT_VIDEO_SELECTOR,
@@ -10,6 +9,7 @@ import {
 	type Quality,
 	type VideoContainer,
 } from "./constants";
+import { asCookieSpec } from "./cookies";
 import { defaultDownloadDir, normalizeUserPath } from "./paths";
 import {
 	type AudioReencodeCodec,
@@ -32,6 +32,7 @@ export interface Settings {
 	audioQuality: string;
 	embedMetadata: boolean;
 	embedThumbnail: boolean;
+	/** yt-dlp cookie spec: "firefox", "zen", "zen:Work", ... Unset means no cookies by default. */
 	cookiesFromBrowser?: string;
 	extraArgs: string;
 	outputTemplate: string;
@@ -59,7 +60,6 @@ function flag(value: unknown, fallback: boolean): boolean {
  * so every value is validated and defaulted here.
  */
 export function normalizeSettings(raw: Record<string, unknown>): Settings {
-	const browser = text(raw.cookiesFromBrowser)?.toLowerCase();
 	const audioQuality = text(raw.audioQuality) ?? "0";
 
 	return {
@@ -76,11 +76,8 @@ export function normalizeSettings(raw: Record<string, unknown>): Settings {
 		audioQuality: /^(\d|10|\d+[kK])$/.test(audioQuality) ? audioQuality : "0",
 		embedMetadata: flag(raw.embedMetadata, true),
 		embedThumbnail: flag(raw.embedThumbnail, false),
-		cookiesFromBrowser: (COOKIE_BROWSERS as readonly string[]).includes(
-			browser ?? "",
-		)
-			? browser
-			: undefined,
+		// The dropdown's "none" is not a browser, so it ends up undefined here.
+		cookiesFromBrowser: asCookieSpec(text(raw.cookiesFromBrowser)),
 		extraArgs: text(raw.extraArguments) ?? "",
 		outputTemplate: text(raw.outputTemplate) ?? DEFAULT_OUTPUT_TEMPLATE,
 		playlistTemplate: text(raw.playlistTemplate) ?? DEFAULT_PLAYLIST_TEMPLATE,

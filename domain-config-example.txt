@@ -20,12 +20,18 @@
 #                 (aac, opus, mp3, flac, pcm)
 #   audio-format  audio format for the Audio command: m4a, mp3, opus, ogg, flac, wav
 #   audio-ffmpeg  extra ffmpeg arguments used when extracting audio
+#   cookies       browser to take cookies from: firefox, zen, chrome, chromium, brave,
+#                 edge, opera, vivaldi, safari, whale, or a profile as in zen:Work /
+#                 firefox:/path/to/profile. "on" uses the browser from the preferences,
+#                 "off" never uses cookies for these domains
 #   args          any extra yt-dlp arguments
 #
 # A domain also matches its subdomains ("youtube.com" covers music.youtube.com).
+# Only the most specific matching rule is used, so put all keys for a site on one line.
 # Priority: keys typed after the URL > this file > extension preferences.
 
-# YouTube: up to 1080p in MP4
+# YouTube: up to 1080p in MP4. Add cookies="zen" (or firefox, chrome, ...) for
+# age-restricted and members-only videos, one line holds all keys of a site
 youtube.com, youtu.be: quality="1080" format="mp4"
 
 # YouTube Music: MP3 for the Audio command
@@ -42,7 +48,8 @@ reddit.com: reencode="h264-nvenc"
 twitter.com, x.com: format="mp4"
 
 # Vimeo: logged-in cookies from Firefox
-vimeo.com: yt-dlp="bv*+ba/b" args="--cookies-from-browser firefox"
+vimeo.com: yt-dlp="bv*+ba/b" cookies="firefox"
+
 
 # TikTok: keep the video stream, convert the audio track to AAC
 tiktok.com: format="mp4" audio-reencode="aac"

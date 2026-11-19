@@ -33,6 +33,10 @@ export interface JobState {
 	error: string | null;
 	/** Non-fatal problem, e.g. the GPU encoder failed and the CPU one was used. */
 	warning: string | null;
+	/** Cookies yt-dlp read from the browser (absent in job files written by older versions). */
+	cookieCount: number | null;
+	/** What yt-dlp concluded about the YouTube login, from its own output. */
+	login: "missing" | "rotated" | "age-verification" | null;
 	/** The runner shows (and finalises) a desktop notification for this job. */
 	notificationOwned: boolean;
 	exitCode: number | null;
@@ -182,15 +186,60 @@ export function describeOutcome(
 	}
 }
 
+export interface ErrorContext {
+	/** Browser cookies were used for this download (as chosen: "zen", "firefox:Work", ...). */
+	cookies?: string;
+	cookieCount?: number | null;
+	login?: JobState["login"];
+}
+
+/**
+ * Why cookies did not unlock a video, using what yt-dlp itself reported about
+ * the YouTube login. Falls back to the general advice when it said nothing.
+ */
+function loginHint(context: ErrorContext): string {
+	if (!context.cookies)
+		return "Cookies are off for this download. Add -c zen (or -c firefox), or set “Cookies from browser” in the preferences.";
+
+	if (context.cookieCount === 0)
+		return "yt-dlp read no cookies from the browser profile. Check that the right profile is used (-c zen:ProfileName) and that you are signed in to YouTube in it.";
+
+	if (context.login === "rotated")
+		return "YouTube rotated the cookies of the browser session after they were read. Sign in to YouTube in a separate browser profile that you only use for downloads, then select it with -c zen:ProfileName.";
+
+	if (context.login === "age-verification")
+		return "You are signed in, but YouTube only serves age-restricted videos to accounts that have verified their age. Verify it in your Google account and try again.";
+
+	const read =
+		typeof context.cookieCount === "number"
+			? `yt-dlp read ${context.cookieCount} cookies but found no YouTube sign-in in them`
+			: "yt-dlp found no YouTube sign-in in the cookies";
+	return `${read}. Sign in to YouTube in the browser profile that is used (for Zen, -c zen:ProfileName picks another profile) and try again.`;
+}
+
 /** Adds an actionable hint to common yt-dlp failures. */
-export function explainError(error: string, ytdlpOutdated: boolean): string {
+export function explainError(
+	error: string,
+	ytdlpOutdated: boolean,
+	context: ErrorContext = {},
+): string {
 	let hint = "";
-	if (
+	if (/mutagen/i.test(error)) {
+		hint =
+			"this yt-dlp has no mutagen module, which is needed to embed thumbnails into opus/ogg/flac. Clear the yt-dlp path preference to use the bundled build, or turn off “Embed thumbnail”.";
+	} else if (
+		/could not find .{0,30}cookies database|could not find .{0,30}profile|unsupported browser/i.test(
+			error,
+		)
+	) {
+		hint =
+			"yt-dlp could not find that browser’s profile. For Zen use -c zen (or choose Zen in the preferences); for a custom profile use e.g. -c zen:/path/to/profile.";
+	} else if (
 		/sign in|log(ged)?[ -]?in|cookies|age[- ]restricted|confirm you.?re not a bot/i.test(
 			error,
 		)
 	) {
-		hint = "Set “Cookies from browser” in the extension preferences.";
+		hint = loginHint(context);
 	} else if (/HTTP Error 403/i.test(error)) {
 		hint = ytdlpOutdated
 			? "Update yt-dlp, or set “Cookies from browser” in the preferences."

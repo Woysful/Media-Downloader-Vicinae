@@ -43,6 +43,11 @@ export const DEFAULT_OUTPUT_TEMPLATE = "%(title)s.%(ext)s";
 export const DEFAULT_PLAYLIST_TEMPLATE =
 	"%(playlist_title,playlist_id|Playlist)s/%(playlist_index&{:03d} - |)s%(title)s.%(ext)s";
 
+/**
+ * Browsers accepted by `--cookies-from-browser`, plus "zen": yt-dlp has no
+ * Zen support, but Zen is a Firefox fork with the same cookie database, so
+ * it is translated to `firefox:<profile directory>` (see cookies.ts).
+ */
 export const COOKIE_BROWSERS = [
 	"brave",
 	"chrome",
@@ -53,7 +58,22 @@ export const COOKIE_BROWSERS = [
 	"safari",
 	"vivaldi",
 	"whale",
+	"zen",
 ] as const;
+export type CookieBrowser = (typeof COOKIE_BROWSERS)[number];
+
+export const COOKIE_BROWSER_TITLES: Record<CookieBrowser, string> = {
+	brave: "Brave",
+	chrome: "Chrome",
+	chromium: "Chromium",
+	edge: "Edge",
+	firefox: "Firefox",
+	opera: "Opera",
+	safari: "Safari",
+	vivaldi: "Vivaldi",
+	whale: "Whale",
+	zen: "Zen",
+};
 
 export function asVideoContainer(
 	value: string | undefined,

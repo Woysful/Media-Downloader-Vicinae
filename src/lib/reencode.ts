@@ -415,6 +415,57 @@ export interface EncodeAttempt {
 	ext: string;
 	/** False when the video stream is copied (audio-only re-encode). */
 	video: boolean;
+	/**
+	 * ffprobe codec names that already are what this pass makes of the audio.
+	 * The runner leaves such audio alone. Unset when the user's own arguments
+	 * change the audio, because then a re-encode is what was asked for.
+	 */
+	audioMatch?: string[];
+	/** `output` with the audio stream copied; used when the file already matches. */
+	outputAudioCopy?: string[];
+}
+
+const COPY_AUDIO = ["-c:a", "copy"] as const;
+
+/** ffmpeg encoder -> codec_name that ffprobe reports for its output. */
+const PROBE_NAMES: Record<string, string[]> = {
+	aac: ["aac"],
+	libopus: ["opus"],
+	libmp3lame: ["mp3"],
+	flac: ["flac"],
+	// Only 16-bit: turning 24-bit PCM into 16-bit is a real change.
+	pcm_s16le: ["pcm_s16le"],
+};
+
+/** Arguments that change the audio, so matching codecs must not skip the encode. */
+const AUDIO_FLAGS = new Set([
+	"-c",
+	"-codec",
+	"-c:a",
+	"-codec:a",
+	"-acodec",
+	"-b:a",
+	"-q:a",
+	"-aq",
+	"-ar",
+	"-ac",
+	"-af",
+	"-filter:a",
+	"-an",
+	"-map",
+]);
+
+/**
+ * The codec names a file's audio may already have for the encode to be
+ * unnecessary, or undefined when the encode must always run.
+ */
+export function audioMatchFor(
+	audioArgs: readonly string[],
+	extra: readonly string[],
+): string[] | undefined {
+	if (extra.some((arg) => AUDIO_FLAGS.has(arg))) return undefined;
+	const at = audioArgs.indexOf("-c:a");
+	return at >= 0 ? PROBE_NAMES[audioArgs[at + 1]] : undefined;
 }
 
 export interface EncoderSupport {
@@ -435,20 +486,24 @@ function attemptFor(
 		preset.hardware === "vaapi"
 			? ["-vaapi_device", vaapiDevice ?? "/dev/dri/renderD128"]
 			: [];
-	const output = [
+	const audio = audioArgs ?? preset.audio;
+	const outputWith = (audioPart: readonly string[]) => [
 		...preset.video,
-		...(audioArgs ?? preset.audio),
+		...audioPart,
 		"-movflags",
 		"+faststart",
 		...extra,
 	];
+	const audioMatch = audioMatchFor(audio, extra);
 	return {
 		codec,
 		label: preset.title,
 		input,
-		output,
+		output: outputWith(audio),
 		ext: preset.ext,
 		video: true,
+		audioMatch,
+		outputAudioCopy: audioMatch ? outputWith(COPY_AUDIO) : undefined,
 	};
 }
 
@@ -474,6 +529,7 @@ export function planAudioEncode(
 		output,
 		ext: container,
 		video: false,
+		audioMatch: audioMatchFor(preset.args, extraArgs),
 	};
 }
 

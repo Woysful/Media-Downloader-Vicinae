@@ -1,4 +1,5 @@
 import { parseQuality, type Quality } from "./constants";
+import { asCookieSpec } from "./cookies";
 import {
 	type AudioReencodeCodec,
 	parseAudioReencode,
@@ -15,7 +16,8 @@ export type QueryKey =
 	| "args"
 	| "playlist"
 	| "reencode"
-	| "audioReencode";
+	| "audioReencode"
+	| "cookies";
 
 interface KeyDef {
 	names: readonly string[];
@@ -40,6 +42,7 @@ const KEYS: readonly KeyDef[] = [
 		key: "audioReencode",
 		takesValue: "optional",
 	},
+	{ names: ["-c", "--cookies"], key: "cookies", takesValue: "optional" },
 ];
 
 export const ALL_KEYS: readonly QueryKey[] = KEYS.map((k) => k.key);
@@ -56,9 +59,31 @@ export interface ParsedQuery {
 	reencode?: ReencodeCodec | boolean;
 	/** true: re-encode audio with the configured codec; false: "-ea off". */
 	audioReencode?: AudioReencodeCodec | boolean;
+	/**
+	 * A browser (`firefox`, `zen`, `zen:Work`, ...), true: use the browser from
+	 * the domain rule or preferences, false: "-c off".
+	 */
+	cookies?: string | boolean;
 }
 
 export class QueryError extends Error {}
+
+/** "-c off" / "-c none" turn cookies off for one download. */
+function parseCookiesValue(
+	value: string | undefined,
+): string | false | undefined {
+	if (value === undefined) return undefined;
+	if (/^(off|none|no)$/i.test(value.trim())) return false;
+	return asCookieSpec(value);
+}
+
+function looksLikeBrowserName(word: string | undefined): boolean {
+	return (
+		word !== undefined &&
+		/^[a-z][a-z0-9_-]*$/i.test(word) &&
+		word.toLowerCase() !== "localhost"
+	);
+}
 
 export function keyName(key: QueryKey): string {
 	return KEYS.find((k) => k.key === key)?.names[0] ?? key;
@@ -130,11 +155,21 @@ export function parseQuery(
 		let value: string | undefined;
 		if (def.takesValue === "optional") {
 			// "-e prores" takes the next word only when it names a codec, so
-			// "-e https://..." still treats the URL as the URL.
+			// "-e https://..." still treats the URL as the URL. "-c firefox"
+			// works the same way with browser names.
 			const parse =
-				def.key === "audioReencode" ? parseAudioReencode : parseReencode;
+				def.key === "audioReencode"
+					? parseAudioReencode
+					: def.key === "cookies"
+						? parseCookiesValue
+						: parseReencode;
+			const next = words[i + 1];
 			if (inline !== undefined) value = inline;
-			else if (parse(words[i + 1]) !== undefined) value = words[++i];
+			else if (parse(next) !== undefined) value = words[++i];
+			// A bare word that is no browser ("-c netscape") is a typo, not a
+			// second URL: take it so the error can name the browser.
+			else if (def.key === "cookies" && looksLikeBrowserName(next))
+				value = words[++i];
 		} else if (def.takesValue) {
 			value = inline ?? words[++i];
 			if (value === undefined || value === "")
@@ -201,6 +236,19 @@ export function parseQuery(
 						`Unknown audio codec "${value}" (use e.g. aac, opus, mp3, flac, pcm or off)`,
 					);
 				result.audioReencode = audioReencode;
+				break;
+			}
+			case "cookies": {
+				if (value === undefined) {
+					result.cookies = true;
+					break;
+				}
+				const cookies = parseCookiesValue(value);
+				if (cookies === undefined)
+					throw new QueryError(
+						`Unknown browser "${value}" (use firefox, zen, chrome, chromium, brave, edge, opera, vivaldi, safari, whale or off)`,
+					);
+				result.cookies = cookies;
 				break;
 			}
 		}

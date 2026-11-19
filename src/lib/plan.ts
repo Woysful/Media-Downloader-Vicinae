@@ -12,6 +12,7 @@ import {
 	type VideoContainer,
 	videoSupportsThumbnail,
 } from "./constants";
+import { CookieError, resolveCookies, resolveCookieSpec } from "./cookies";
 import type { DomainRule } from "./domain-config";
 import {
 	AUDIO_CODEC_PRESETS,
@@ -42,6 +43,8 @@ export interface DownloadRequest {
 	reencode?: ReencodeCodec | boolean;
 	/** Audio codec for the video's audio track, false (off) or undefined (preferences decide). */
 	audioReencode?: AudioReencodeCodec | boolean;
+	/** Browser to take cookies from, true (preferences/rule decide which), false (off) or undefined. */
+	cookies?: string | boolean;
 	playlist: boolean;
 }
 
@@ -52,6 +55,8 @@ export interface PlanEnv {
 	jsRuntime?: string;
 	/** When set, unavailable encoders are skipped or reported before downloading. */
 	encoders?: EncoderSupport;
+	/** Turns a cookie browser spec into the `--cookies-from-browser` value (finds Zen profiles). */
+	resolveCookieSpec?: (spec: string) => string;
 }
 
 export interface PlanSummary {
@@ -62,6 +67,10 @@ export interface PlanSummary {
 	quality: Quality;
 	reencode: { codec: ReencodeCodec; title: string; notice?: string } | null;
 	audioReencode: { codec: AudioReencodeCodec; title: string } | null;
+	/** The browser cookies are taken from, as chosen (before Zen is mapped to a profile). */
+	cookies?: string;
+	/** Folder of the profile the cookies are read from, when Zen was mapped to one. */
+	cookiesProfile?: string;
 	playlist: boolean;
 	rule?: { line: number; domains: string[] };
 }
@@ -130,6 +139,9 @@ export function buildPlan(
 	const args: string[] = [
 		"--newline",
 		"--progress",
+		// --print makes yt-dlp quiet, which hides its notes about cookies and the
+		// YouTube login. The runner reads those to explain failed downloads.
+		"--no-quiet",
 		"--no-simulate",
 		"--progress-template",
 		PROGRESS_TEMPLATE,
@@ -155,8 +167,24 @@ export function buildPlan(
 
 	if (env.ffmpegPath) args.push("--ffmpeg-location", env.ffmpegPath);
 	if (env.jsRuntime) args.push("--js-runtimes", env.jsRuntime);
-	if (settings.cookiesFromBrowser)
-		args.push("--cookies-from-browser", settings.cookiesFromBrowser);
+	let cookies: string | undefined;
+	let cookiesProfile: string | undefined;
+	try {
+		cookies = resolveCookies(
+			req.cookies,
+			r.cookies,
+			settings.cookiesFromBrowser,
+		);
+		if (cookies) {
+			const value = (env.resolveCookieSpec ?? resolveCookieSpec)(cookies);
+			args.push("--cookies-from-browser", value);
+			if (value !== cookies && value.startsWith("firefox:"))
+				cookiesProfile = value.slice("firefox:".length).split("::")[0];
+		}
+	} catch (error) {
+		if (error instanceof CookieError) throw new PlanError(error.message);
+		throw error;
+	}
 	if (settings.embedMetadata) args.push("--embed-metadata");
 
 	let encode: EncodeAttempt[] | null = null;
@@ -166,6 +194,8 @@ export function buildPlan(
 		quality: "best",
 		reencode: null,
 		audioReencode: null,
+		cookies,
+		cookiesProfile,
 		playlist: req.playlist,
 		rule: rule ? { line: rule.line, domains: rule.domains } : undefined,
 	};
@@ -317,4 +347,24 @@ export function buildPlan(
 	args.push("--", req.url);
 
 	return { args, encode, summary };
+}
+
+/** Audio formats whose cover art yt-dlp can only write with the mutagen module. */
+const MUTAGEN_ONLY_THUMBNAIL: readonly AudioFormat[] = [
+	"opus",
+	"vorbis",
+	"flac",
+];
+
+/**
+ * True when the plan embeds a thumbnail into a file type that yt-dlp cannot
+ * handle without mutagen (ogg/opus/flac). MP3 and MKV go through ffmpeg, and
+ * MP4/M4A fall back to AtomicParsley or ffmpeg, so those never fail on it.
+ */
+export function thumbnailNeedsMutagen(plan: DownloadPlan): boolean {
+	return (
+		plan.args.includes("--embed-thumbnail") &&
+		plan.summary.audioFormat !== undefined &&
+		MUTAGEN_ONLY_THUMBNAIL.includes(plan.summary.audioFormat)
+	);
 }

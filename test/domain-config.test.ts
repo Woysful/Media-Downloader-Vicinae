@@ -109,3 +109,28 @@ test("creates the config file once, including missing directories", () => {
 	assert.equal(fs.readFileSync(file, "utf8"), "custom");
 	fs.rmSync(dir, { recursive: true });
 });
+
+test("cookies key accepts a browser, on and off; Zen profiles keep their ':'", () => {
+	const { rules, warnings } = parseDomainConfig(
+		[
+			'a.com: cookies="zen"',
+			"b.com: cookies=firefox",
+			'c.com: cookies="on"',
+			'd.com: cookies="off"',
+			'e.com: cookies="zen:Default (release)"',
+			'f.com: cookies-from-browser="Chrome"',
+			'g.com: cookies="netscape"',
+		].join("\n"),
+	);
+	assert.deepEqual(
+		rules.map((r) => r.settings.cookies),
+		["zen", "firefox", true, false, "zen:Default (release)", "chrome"],
+	);
+	assert.equal(warnings.length, 1);
+	assert.match(warnings[0], /Line 7: invalid cookies "netscape"/);
+});
+
+test("the generated config documents the cookies key", () => {
+	assert.match(DEFAULT_CONFIG_TEXT, /cookies {7}browser to take cookies from/);
+	assert.match(DEFAULT_CONFIG_TEXT, /zen/);
+});

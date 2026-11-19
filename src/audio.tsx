@@ -10,5 +10,6 @@ export default async function Audio(
 		"ffmpeg",
 		"args",
 		"playlist",
+		"cookies",
 	]);
 }

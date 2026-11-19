@@ -24,6 +24,7 @@ import {
 	type DownloadPlan,
 	type DownloadRequest,
 	PlanError,
+	thumbnailNeedsMutagen,
 } from "./plan";
 import {
 	type ParsedQuery,
@@ -41,6 +42,7 @@ import {
 	type JobState,
 } from "./status";
 import {
+	ensureThumbnailSupport,
 	isOutdated,
 	resolveToolchain,
 	type Toolchain,
@@ -123,6 +125,7 @@ export function requestFromQuery(
 		extraArgs: query.extraArgs,
 		reencode: query.reencode,
 		audioReencode: query.audioReencode,
+		cookies: query.cookies,
 		playlist: query.playlist,
 	};
 }
@@ -143,10 +146,9 @@ export async function startDownload(
 	const rule = config ? findRule(config.rules, req.url) : undefined;
 
 	await toast.progress("Preparing download…");
-	const toolchain = await resolveToolchain(
-		settings,
-		(title, message) => void toast.progress(title, message),
-	);
+	const report = (title: string, message?: string) =>
+		void toast.progress(title, message);
+	let toolchain = await resolveToolchain(settings, report);
 
 	fs.mkdirSync(settings.downloadDir, { recursive: true });
 	cleanupOldJobs();
@@ -160,13 +162,25 @@ export async function startDownload(
 			encoders: toolchain.encoders,
 		});
 
+		// Cover art in opus/ogg/flac needs mutagen, which a system yt-dlp may lack.
+		let args = plan.args;
+		let notice = plan.summary.reencode?.notice ?? null;
+		if (thumbnailNeedsMutagen(plan)) {
+			const support = await ensureThumbnailSupport(toolchain, settings, report);
+			toolchain = support.toolchain;
+			if (!support.embed) {
+				args = args.filter((arg) => arg !== "--embed-thumbnail");
+				notice = support.notice ?? notice;
+			}
+		}
+
 		startJob(job, {
 			url: req.url,
 			kind: req.kind,
 			request: req,
 			playlist: req.playlist,
 			downloadDir: settings.downloadDir,
-			ytdlp: { bin: toolchain.ytdlp, args: plan.args },
+			ytdlp: { bin: toolchain.ytdlp, args },
 			reencode:
 				plan.encode && toolchain.ffmpeg
 					? {
@@ -175,16 +189,14 @@ export async function startDownload(
 							attempts: plan.encode,
 						}
 					: null,
-			notice: plan.summary.reencode?.notice ?? null,
+			notice,
 			notify: settings.notify,
 			progressNotification: settings.progressNotification,
 			openFolder: settings.openFolder,
 			iconPath: path.join(environment.assetsPath, "icon.png"),
 		});
 
-		console.log(
-			`Started job ${job.id}: ${toolchain.ytdlp} ${plan.args.join(" ")}`,
-		);
+		console.log(`Started job ${job.id}: ${toolchain.ytdlp} ${args.join(" ")}`);
 		return { job, plan, toolchain, settings };
 	} catch (error) {
 		fs.rmSync(job.dir, { recursive: true, force: true });
@@ -226,7 +238,15 @@ export async function monitorDownload(
 	acknowledge(job);
 
 	if (state.error)
-		state.error = explainError(state.error, isOutdated(toolchain.ytdlpVersion));
+		state.error = explainError(
+			state.error,
+			isOutdated(toolchain.ytdlpVersion),
+			{
+				cookies: started.plan.summary.cookies,
+				cookieCount: state.cookieCount,
+				login: state.login,
+			},
+		);
 	options.onState?.(state);
 	const { title, message } = describeOutcome(state, playlist);
 

@@ -7,5 +7,6 @@ export default async function VideoBest(
 	await runQuickDownload("video-best", props.arguments.url, [
 		"playlist",
 		"args",
+		"cookies",
 	]);
 }

@@ -8,6 +8,7 @@ import {
 	type Quality,
 	type VideoContainer,
 } from "./constants";
+import { asCookieSpec } from "./cookies";
 import { configHome } from "./paths";
 import {
 	type AudioReencodeCodec,
@@ -30,6 +31,8 @@ export interface RuleSettings {
 	reencode?: ReencodeCodec | boolean;
 	/** true: use the preference audio codec; false: keep the original audio. */
 	audioReencode?: AudioReencodeCodec | boolean;
+	/** A browser such as firefox or zen:Work; true: use the preference browser; false: never use cookies. */
+	cookies?: string | boolean;
 }
 
 export interface DomainRule {
@@ -61,19 +64,24 @@ export const DEFAULT_CONFIG_TEXT = `# Media Downloader - per-domain settings
 #                 (aac, opus, mp3, flac, pcm)
 #   audio-format  audio format for the Audio command: m4a, mp3, opus, ogg, flac, wav
 #   audio-ffmpeg  extra ffmpeg arguments used when extracting audio
-#   args          any extra yt-dlp arguments, e.g. "--cookies-from-browser firefox"
+#   cookies       browser to take cookies from: firefox, zen, chrome, chromium, brave,
+#                 edge, opera, vivaldi, safari, whale, or a profile as in zen:Work /
+#                 firefox:/path/to/profile. "on" uses the browser from the preferences,
+#                 "off" never uses cookies for these domains
+#   args          any extra yt-dlp arguments
 #
 # A domain also matches its subdomains: "youtube.com" covers music.youtube.com.
+# Only the most specific matching rule is used, so put all keys for a site on one line.
 # Values typed after the URL (-f, -q, -yt, -ff, ...) override these rules, and
 # these rules override the extension preferences.
 #
 # Examples (remove the leading "#" to enable):
-# youtube.com, youtu.be: quality="1080" format="mp4"
+# youtube.com, youtu.be: quality="1080" format="mp4" cookies="zen"
 # instagram.com: reencode="on"
 # twitch.tv: reencode="prores"
 # tiktok.com: audio-reencode="aac"
 # twitter.com, x.com: format="mp4"
-# vimeo.com: yt-dlp="bv*+ba/b" args="--cookies-from-browser firefox"
+# vimeo.com: yt-dlp="bv*+ba/b" cookies="firefox"
 # soundcloud.com: audio-format="mp3"
 `;
 
@@ -87,6 +95,8 @@ const KEY_MAP: Record<string, keyof RuleSettings> = {
 	args: "extraArgs",
 	reencode: "reencode",
 	"audio-reencode": "audioReencode",
+	cookies: "cookies",
+	"cookies-from-browser": "cookies",
 	// Pre-2.0 name of the setting.
 	compat: "reencode",
 };
@@ -236,6 +246,22 @@ function applySetting(
 			if (audio === undefined)
 				return `invalid audio-reencode "${value}" (on, off or a codec such as aac, opus, mp3, flac, pcm)`;
 			settings.audioReencode = audio;
+			return;
+		}
+		case "cookies": {
+			const v = value.trim().toLowerCase();
+			if (v === "on" || v === "yes" || v === "true") {
+				settings.cookies = true;
+				return;
+			}
+			if (v === "off" || v === "none" || v === "no" || v === "false") {
+				settings.cookies = false;
+				return;
+			}
+			const spec = asCookieSpec(value);
+			if (!spec)
+				return `invalid cookies "${value}" (on, off or a browser such as firefox, zen, chrome)`;
+			settings.cookies = spec;
 			return;
 		}
 		default:

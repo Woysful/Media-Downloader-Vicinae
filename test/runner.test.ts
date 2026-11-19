@@ -174,3 +174,97 @@ test("errors get actionable hints", () => {
 	);
 	assert.equal(explainError("Something else", false), "Something else");
 });
+
+test("cookie and mutagen errors point at the actual fix", () => {
+	assert.match(
+		explainError("Sign in to confirm you’re not a bot", false),
+		/Cookies are off.*-c zen/,
+	);
+	assert.match(
+		explainError(
+			"could not find firefox cookies database in '/home/u/.mozilla/firefox'",
+			false,
+		),
+		/-c zen/,
+	);
+	const mutagen = explainError(
+		"Postprocessing: module mutagen was not found. Please install using `python3 -m pip install mutagen`",
+		false,
+	);
+	assert.match(mutagen, /no mutagen module/);
+	assert.doesNotMatch(mutagen, /Cookies from browser/);
+});
+
+test("runner records what yt-dlp says about cookies and the YouTube login", () => {
+	const state = runner.createState(1, 0);
+	assert.equal(state.cookieCount, null);
+	assert.equal(state.login, null);
+
+	runner.applyLine(state, "Extracting cookies from firefox");
+	runner.applyLine(state, "Extracted 3 cookies from firefox");
+	assert.equal(state.cookieCount, 3);
+
+	runner.applyLine(
+		state,
+		"[youtube] 8KXnQ-SS8rc: This video is age-restricted; some formats may be missing without authentication. Use --cookies-from-browser or --cookies for the authentication.",
+	);
+	assert.equal(state.login, "missing");
+
+	// Rotation is the root cause and is not overwritten by the follow-up line.
+	runner.applyLine(
+		state,
+		"WARNING: [youtube] The provided YouTube account cookies are no longer valid. They have likely been rotated in the browser as a security measure.",
+	);
+	runner.applyLine(
+		state,
+		"[youtube] 8KXnQ-SS8rc: This video is age-restricted; some formats may be missing without authentication.",
+	);
+	assert.equal(state.login, "rotated");
+
+	const verify = runner.createState(1, 0);
+	runner.applyLine(
+		verify,
+		"[youtube] x: This video is age-restricted and YouTube is requiring account age-verification; some formats may be missing",
+	);
+	assert.equal(verify.login, "age-verification");
+});
+
+test("the age-restriction error explains why cookies did not help", () => {
+	const err =
+		"Sign in to confirm your age. This video may be inappropriate for some users.";
+	const used = { cookies: "zen" };
+
+	assert.match(explainError(err, false), /Cookies are off.*-c zen/);
+	assert.match(
+		explainError(err, false, { ...used, cookieCount: 0 }),
+		/read no cookies.*-c zen:ProfileName/,
+	);
+	assert.match(
+		explainError(err, false, { ...used, cookieCount: 412, login: "missing" }),
+		/read 412 cookies but found no YouTube sign-in/,
+	);
+	assert.match(
+		explainError(err, false, { ...used, cookieCount: 412, login: null }),
+		/found no YouTube sign-in/,
+	);
+	assert.match(
+		explainError(err, false, { ...used, login: "rotated" }),
+		/rotated.*separate browser profile/,
+	);
+	assert.match(
+		explainError(err, false, { ...used, login: "age-verification" }),
+		/verified their age/,
+	);
+	// The hint never tells someone who already uses cookies to turn them on.
+	assert.doesNotMatch(
+		explainError(err, false, { ...used, login: "missing" }),
+		/Cookies are off/,
+	);
+	// No angle-bracket placeholders: they vanish when the message is rendered.
+	for (const login of ["missing", "rotated", "age-verification", null] as const)
+		assert.doesNotMatch(
+			explainError(err, false, { ...used, login }),
+			/<[a-z]+>/i,
+		);
+	assert.doesNotMatch(explainError(err, false), /<[a-z]+>/i);
+});

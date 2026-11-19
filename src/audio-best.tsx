@@ -7,5 +7,6 @@ export default async function AudioBest(
 	await runQuickDownload("audio-best", props.arguments.url, [
 		"playlist",
 		"args",
+		"cookies",
 	]);
 }

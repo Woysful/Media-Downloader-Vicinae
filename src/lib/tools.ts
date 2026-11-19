@@ -4,6 +4,13 @@ import * as https from "node:https";
 import * as os from "node:os";
 import * as path from "node:path";
 import { environment } from "@vicinae/api";
+import {
+	ffmpegArchiveUrl,
+	ffmpegBuild,
+	hasMutagen,
+	isStandaloneYtdlp,
+	ytdlpAsset,
+} from "./binaries";
 import type { EncoderSupport } from "./reencode";
 import type { Settings } from "./settings";
 
@@ -84,6 +91,33 @@ function run(file: string, args: string[], timeoutMs: number): Promise<string> {
 	});
 }
 
+/** Output of a command that is expected to fail: stdout and stderr, whatever the exit code. */
+function runCapture(
+	file: string,
+	args: string[],
+	timeoutMs: number,
+): Promise<string> {
+	return new Promise((resolve, reject) => {
+		execFile(
+			file,
+			args,
+			{
+				timeout: timeoutMs,
+				maxBuffer: 8 * 1024 * 1024,
+				env: { ...process.env, PATH: searchPath().join(path.delimiter) },
+			},
+			(error, stdout, stderr) => {
+				const failedToRun =
+					error &&
+					(error.killed ||
+						typeof (error as NodeJS.ErrnoException).code === "string");
+				if (failedToRun) reject(error);
+				else resolve(`${stdout}\n${stderr}`);
+			},
+		);
+	});
+}
+
 function binDir(): string {
 	return path.join(environment.supportPath, "bin");
 }
@@ -93,17 +127,6 @@ function localYtdlpPath(): string {
 		binDir(),
 		process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp",
 	);
-}
-
-function releaseAsset(): string {
-	if (process.platform === "darwin") return "yt-dlp_macos";
-	if (process.platform === "win32") return "yt-dlp.exe";
-	if (process.platform === "linux" && process.arch === "x64")
-		return "yt-dlp_linux";
-	if (process.platform === "linux" && process.arch === "arm64")
-		return "yt-dlp_linux_aarch64";
-	// Zipapp build: works anywhere python3 is installed.
-	return "yt-dlp";
 }
 
 function download(
@@ -154,7 +177,8 @@ async function installYtdlp(report: Report): Promise<string> {
 	const target = localYtdlpPath();
 	fs.mkdirSync(binDir(), { recursive: true });
 
-	const assets = [...new Set([releaseAsset(), "yt-dlp"])];
+	// The zipapp is the last resort: it works anywhere python3 is installed.
+	const assets = [...new Set([ytdlpAsset(), "yt-dlp"])];
 	let lastError: unknown;
 	for (const asset of assets) {
 		const tmp = `${target}.download`;
@@ -237,24 +261,165 @@ async function resolveYtdlp(
 	return { bin: await installYtdlp(report), local: true };
 }
 
-function resolveFfmpeg(settings: Settings): {
-	ffmpeg?: string;
-	ffprobe?: string;
-} {
-	const local = path.join(binDir(), "ffmpeg");
-	const ffmpeg =
-		settings.ffmpegPath ??
-		findExecutable("ffmpeg") ??
-		(isExecutable(local) ? local : undefined);
+/**
+ * Downloads a static ffmpeg + ffprobe (GPL build from yt-dlp/FFmpeg-Builds)
+ * into the extension's own folder. Linux only: there is no comparable
+ * official static build for macOS.
+ */
+export async function installFfmpeg(report: Report): Promise<string> {
+	const build = ffmpegBuild();
+	if (!build) {
+		throw new ToolError(
+			"ffmpeg was not found, and it can only be downloaded automatically on Linux (x64, arm64). Install it (e.g. `brew install ffmpeg`) or set its path in the extension preferences.",
+		);
+	}
+
+	const dir = binDir();
+	const archive = path.join(dir, `ffmpeg-${build}.tar.xz.download`);
+	const stage = path.join(dir, "ffmpeg-extract");
+	fs.mkdirSync(dir, { recursive: true });
+
+	try {
+		report("Installing ffmpeg…", "one-time download, about 150 MB");
+		let lastShown = -1;
+		await download(ffmpegArchiveUrl(build), archive, (percent) => {
+			const shown = percent === null ? null : Math.floor(percent / 5) * 5;
+			if (shown !== null && shown !== lastShown) {
+				lastShown = shown;
+				report(`Installing ffmpeg… ${shown}%`, "one-time download");
+			}
+		});
+
+		report("Installing ffmpeg…", "unpacking");
+		fs.rmSync(stage, { recursive: true, force: true });
+		fs.mkdirSync(stage, { recursive: true });
+		await run(
+			"tar",
+			[
+				"-xJf",
+				archive,
+				"-C",
+				stage,
+				"--strip-components=2",
+				"--wildcards",
+				"*/bin/ffmpeg",
+				"*/bin/ffprobe",
+			],
+			300_000,
+		);
+		for (const name of ["ffmpeg", "ffprobe"]) {
+			fs.chmodSync(path.join(stage, name), 0o755);
+			fs.renameSync(path.join(stage, name), path.join(dir, name));
+		}
+
+		const target = path.join(dir, "ffmpeg");
+		await run(target, ["-version"], 30_000);
+		return target;
+	} catch (error) {
+		throw new ToolError(
+			`ffmpeg is not installed and could not be downloaded automatically (${
+				error instanceof Error ? error.message : String(error)
+			}). It needs tar with xz support. Install ffmpeg with your package manager or set its path in the extension preferences.`,
+		);
+	} finally {
+		fs.rmSync(archive, { force: true });
+		fs.rmSync(stage, { recursive: true, force: true });
+	}
+}
+
+async function resolveFfmpeg(
+	settings: Settings,
+	report: Report,
+): Promise<{ ffmpeg: string; ffprobe?: string }> {
 	if (settings.ffmpegPath && !isExecutable(settings.ffmpegPath)) {
 		throw new ToolError(
 			`ffmpeg path from preferences is not an executable file: ${settings.ffmpegPath}`,
 		);
 	}
-	if (!ffmpeg) return {};
+	const local = path.join(binDir(), "ffmpeg");
+	const ffmpeg =
+		settings.ffmpegPath ??
+		findExecutable("ffmpeg") ??
+		(isExecutable(local) ? local : await installFfmpeg(report));
 	const sibling = path.join(path.dirname(ffmpeg), "ffprobe");
 	const ffprobe = isExecutable(sibling) ? sibling : findExecutable("ffprobe");
 	return { ffmpeg, ffprobe };
+}
+
+/** `--js-runtimes` exists since JS_RUNTIMES_SINCE; the Node binary running this extension is always available, unlike deno. */
+function jsRuntimeFor(version: string): string | undefined {
+	return version.slice(0, 10) >= JS_RUNTIMES_SINCE
+		? `node:${process.execPath}`
+		: undefined;
+}
+
+export async function ytdlpHasMutagen(bin: string): Promise<boolean> {
+	try {
+		// Any URL makes yt-dlp print its debug header; an unsupported scheme fails at once, offline.
+		return hasMutagen(
+			await runCapture(
+				bin,
+				["-v", "--ignore-config", "--simulate", "foo:bar"],
+				30_000,
+			),
+		);
+	} catch {
+		return false;
+	}
+}
+
+export interface ThumbnailSupport {
+	toolchain: Toolchain;
+	/** False when the thumbnail has to be skipped because no yt-dlp here can embed it. */
+	embed: boolean;
+	notice?: string;
+}
+
+/**
+ * Embedding a thumbnail into opus/ogg/flac needs the mutagen Python module.
+ * yt-dlp from pip or a distro package often has none, and then fails with
+ * "Postprocessing: module mutagen was not found". The standalone build from
+ * GitHub bundles it, so that one is used instead (downloaded when missing).
+ * A yt-dlp path chosen in the preferences is never replaced.
+ */
+export async function ensureThumbnailSupport(
+	toolchain: Toolchain,
+	settings: Settings,
+	report: Report,
+): Promise<ThumbnailSupport> {
+	if (await ytdlpHasMutagen(toolchain.ytdlp)) return { toolchain, embed: true };
+
+	if (!settings.ytdlpPath && isStandaloneYtdlp(ytdlpAsset())) {
+		try {
+			let local = localYtdlpPath();
+			if (!isExecutable(local)) local = await installYtdlp(report);
+			else if (settings.autoUpdateYtdlp) await maybeUpdateLocal(local, report);
+
+			if (local !== toolchain.ytdlp && (await ytdlpHasMutagen(local))) {
+				const version = (await run(local, ["--version"], 30_000)).split(
+					/\s+/,
+				)[0];
+				return {
+					toolchain: {
+						...toolchain,
+						ytdlp: local,
+						ytdlpVersion: version,
+						ytdlpIsLocal: true,
+						jsRuntime: jsRuntimeFor(version),
+					},
+					embed: true,
+				};
+			}
+		} catch (error) {
+			console.warn("Could not set up a yt-dlp with mutagen:", error);
+		}
+	}
+
+	return {
+		toolchain,
+		embed: false,
+		notice: "Thumbnail not embedded: this yt-dlp has no mutagen module",
+	};
 }
 
 export function versionAgeDays(
@@ -324,12 +489,7 @@ export async function resolveToolchain(
 		);
 	}
 
-	const { ffmpeg, ffprobe } = resolveFfmpeg(settings);
-	if (!ffmpeg) {
-		throw new ToolError(
-			"ffmpeg was not found. Install it (e.g. `sudo apt install ffmpeg`, `sudo pacman -S ffmpeg`) or set its path in the extension preferences.",
-		);
-	}
+	const { ffmpeg, ffprobe } = await resolveFfmpeg(settings, report);
 
 	return {
 		ytdlp: bin,
@@ -338,11 +498,7 @@ export async function resolveToolchain(
 		ffmpeg,
 		ffprobe,
 		encoders: await probeEncoders(ffmpeg),
-		// yt-dlp needs a JavaScript runtime for YouTube; the Node binary running
-		// this extension is always available, unlike deno.
-		jsRuntime:
-			version.slice(0, 10) >= JS_RUNTIMES_SINCE
-				? `node:${process.execPath}`
-				: undefined,
+		// yt-dlp needs a JavaScript runtime for YouTube.
+		jsRuntime: jsRuntimeFor(version),
 	};
 }

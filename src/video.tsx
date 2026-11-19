@@ -13,5 +13,6 @@ export default async function Video(
 		"playlist",
 		"reencode",
 		"audioReencode",
+		"cookies",
 	]);
 }

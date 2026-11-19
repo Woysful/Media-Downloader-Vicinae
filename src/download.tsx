@@ -14,10 +14,13 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	AUDIO_FORMATS,
+	COOKIE_BROWSER_TITLES,
+	COOKIE_BROWSERS,
 	parseQuality,
 	type Quality,
 	VIDEO_CONTAINERS,
 } from "./lib/constants";
+import { describeCookieSpec } from "./lib/cookies";
 import { findRule, loadDomainConfig } from "./lib/domain-config";
 import {
 	errorMessage,
@@ -120,6 +123,7 @@ export default function DownloadMedia() {
 	const [audioFormat, setAudioFormat] = useState(DEFAULT);
 	const [reencode, setReencode] = useState(DEFAULT);
 	const [audioReencode, setAudioReencode] = useState(DEFAULT);
+	const [cookies, setCookies] = useState(DEFAULT);
 	const [playlist, setPlaylist] = useState(false);
 	const [selector, setSelector] = useState("");
 	const [ffmpegArgs, setFfmpegArgs] = useState("");
@@ -172,6 +176,8 @@ export default function DownloadMedia() {
 				: audioReencode === OFF
 					? false
 					: asAudioReencodeCodec(audioReencode),
+		cookies:
+			cookies === DEFAULT ? undefined : cookies === OFF ? false : cookies,
 		selector: customizable && selector.trim() ? selector.trim() : undefined,
 		ffmpegArgs:
 			customizable && ffmpegArgs.trim() ? ffmpegArgs.trim() : undefined,
@@ -196,6 +202,14 @@ export default function DownloadMedia() {
 			rule?.settings.audioReencode,
 			settings.reencodeAudioCodec,
 		) ?? false;
+
+	const ruleCookies = rule?.settings.cookies;
+	const defaultCookies =
+		ruleCookies === false
+			? undefined
+			: typeof ruleCookies === "string"
+				? ruleCookies
+				: settings.cookiesFromBrowser;
 
 	const defaults = {
 		quality: rule?.settings.quality ?? settings.quality,
@@ -231,6 +245,13 @@ export default function DownloadMedia() {
 			if (summary.audioFormat)
 				lines.push(`Audio format: ${summary.audioFormat}`);
 			lines.push(
+				`Cookies: ${summary.cookies ? describeCookieSpec(summary.cookies) : "off"}${
+					summary.cookiesProfile
+						? ` · profile ${summary.cookiesProfile.split("/").pop()}`
+						: ""
+				}`,
+			);
+			lines.push(
 				playlist
 					? "Whole playlist into a subfolder"
 					: "Single item (playlist links download one video)",
@@ -247,6 +268,7 @@ export default function DownloadMedia() {
 		audioFormat,
 		reencode,
 		audioReencode,
+		cookies,
 		playlist,
 		selector,
 		ffmpegArgs,
@@ -532,6 +554,26 @@ export default function DownloadMedia() {
 					))}
 				</Form.Dropdown>
 			)}
+			<Form.Dropdown
+				id="cookies"
+				title="Cookies"
+				value={cookies}
+				onChange={setCookies}
+				info="Use the login cookies of a browser, for age-restricted, private and members-only videos. Zen is read as a Firefox profile; for a specific profile use the -c zen:ProfileName key."
+			>
+				<Form.Dropdown.Item
+					value={DEFAULT}
+					title={`Default – ${defaultCookies ? describeCookieSpec(defaultCookies) : "Off"}`}
+				/>
+				<Form.Dropdown.Item value={OFF} title="Off" />
+				{COOKIE_BROWSERS.map((browser) => (
+					<Form.Dropdown.Item
+						key={browser}
+						value={browser}
+						title={COOKIE_BROWSER_TITLES[browser]}
+					/>
+				))}
+			</Form.Dropdown>
 			<Form.Checkbox
 				id="playlist"
 				title="Playlist"

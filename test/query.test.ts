@@ -86,3 +86,34 @@ test("rejects bad input with readable errors", () => {
 	assert.throws(() => parseQuery("ftp://a.com/file"), /Unsupported URL scheme/);
 	assert.throws(() => parseQuery("notaurl"), /not a valid URL/);
 });
+
+test("-c takes an optional browser without swallowing the URL", () => {
+	assert.equal(parseQuery("https://a.com -c firefox").cookies, "firefox");
+	assert.equal(parseQuery("https://a.com -c zen").cookies, "zen");
+	assert.equal(parseQuery("-c zen https://a.com").cookies, "zen");
+	assert.equal(parseQuery("https://a.com --cookies=chrome").cookies, "chrome");
+	assert.equal(
+		parseQuery("https://a.com -c 'zen:Default (release)'").cookies,
+		"zen:Default (release)",
+	);
+	assert.equal(parseQuery("https://a.com -c").cookies, true);
+	assert.equal(parseQuery("-c a.com/v").cookies, true);
+	assert.equal(parseQuery("-c a.com/v").url, "https://a.com/v");
+	assert.equal(parseQuery("https://a.com -c off").cookies, false);
+	assert.equal(parseQuery("https://a.com").cookies, undefined);
+	assert.throws(
+		() => parseQuery("https://a.com -c netscape"),
+		/Unknown browser/,
+	);
+});
+
+test("-c is only accepted where the command allows it", () => {
+	assert.throws(
+		() => parseQuery("https://a.com -c zen", ["playlist", "args"]),
+		/not supported by this command/,
+	);
+	assert.equal(
+		parseQuery("https://a.com -c zen -p", ["playlist", "cookies"]).cookies,
+		"zen",
+	);
+});
